@@ -1,5 +1,4 @@
 
-
 library(ggplot2); library(GRmetrics)
 
 # import functions
@@ -164,6 +163,19 @@ data_corrected <-
 
 names(data_corrected) <- fileNames
 
+# plotting all data to check for inconsistencies
+
+cc <- scales::seq_gradient_pal("lightblue", "red")(seq(0,1,length.out= length(unique(data_corrected$Final_conc_uM))))
+
+cc <- scales::seq_gradient_pal("lightblue", "red")(seq(0,1,length.out= 9))
+
+ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & cell == "A549" & Drug %in% c("Docetaxel", "DMSO")),
+       aes(x = Time, y = Conf, color = factor(Final_conc_uM), group = factor(Final_conc_uM)))+
+  geom_smooth()+
+  scale_color_manual(values = cc)+
+  facet_wrap(~Drug+cell)
+
+
 
 # checking if exceptions show the same behavious as PBS or DMSO
 
@@ -181,6 +193,10 @@ ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% 
        aes(x = Time, y = Conf, color = factor(Well), group = factor(Well)))+
   geom_line()+
   facet_wrap(~ Final_conc_uM) #FIXME When we plot one cell line, we have a few outliers. Remove these outliers.
+
+
+
+
 
 
 #TODO plot variation across replicates by well in the 384 well plate, hopefully only certain wells in the edge will have problems
@@ -209,6 +225,13 @@ ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% 
 
 #time_treatment <- 24
 
+
+drugs_in_screen <- c("Docetaxel")  #c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO", NA, "Water", "WATER", "H2O", "Dmso", "Control", "Ctrl"))]))
+
+data_corrected[data_corrected$Drug %in% drugs_in_screen,]
+
+matrix()   # columns will be drugs, rows will be cell lines
+
 data_GRmetrics <- data_corrected
 
 cell_line <- "HCT15"
@@ -216,10 +239,11 @@ drug  <- "Docetaxel"
 time_treatment <- 24
 
 
-data_Grmetrics_Ttm <- data_GRmetrics[grepl(cell_line, rownames(data_GRmetrics)),] # preparing the data for one drug
-data_Grmetrics_Ctr <- data_GRmetrics[grepl(cell_line, rownames(data_GRmetrics)),] # getting the matching controls ready
 
-data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Drug == drug) #I chose clofarabine since it has a pretty dose response curve
+data_Grmetrics_Ttm <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # preparing the data for one drug
+data_Grmetrics_Ctr <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # getting the matching controls ready
+
+data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Drug %in% drugs_in_screen) #I chose clofarabine since it has a pretty dose response curve
 data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Drug == "DMSO" & Final_conc_uM == 333) # I separated the drug from the control, as its easier to parse
 
 # keep only matching time points
@@ -240,12 +264,14 @@ data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Time >= time_treatment & Time <
 data_Grmetrics_Ctr$Time <- ifelse(data_Grmetrics_Ctr$Time == min(data_Grmetrics_Ctr$Time), 0, data_Grmetrics_Ctr$Time) 
 data_Grmetrics_Ttm$Time <- ifelse(data_Grmetrics_Ttm$Time == min(data_Grmetrics_Ttm$Time), 0, data_Grmetrics_Ctr$Time)
 
+#TODO select only one time point, eg. 60h, and then calculate the GRmetric across this time point.. could be even 48h
+
 
 # Prepare data_Grmetrics_Ctr as example Case C
 
 data_Grmetrics_Ctr$time = data_Grmetrics_Ctr$Time
 
-data_Grmetrics_Ctr$cell_line <- strsplit(x = rownames(data_Grmetrics_Ctr), "_")[[1]][[1]]
+data_Grmetrics_Ctr$cell_line <- (do.call(rbind, strsplit(x = rownames(data_Grmetrics_Ctr), "_")))[,1]
 
 data_Grmetrics_Ctr$agent = "-"
 
@@ -263,9 +289,9 @@ head(data_Grmetrics_Ttm)
 
 data_Grmetrics_Ttm$time = data_Grmetrics_Ttm$Time
 
-data_Grmetrics_Ttm$cell_line <- strsplit(x = rownames(data_Grmetrics_Ttm), "_")[[1]][[1]]
+data_Grmetrics_Ttm$cell_line <- (do.call(rbind, strsplit(x = rownames(data_Grmetrics_Ttm), "_")))[,1]
 
-data_Grmetrics_Ttm$agent <- unique(data_Grmetrics_Ttm$Drug)
+data_Grmetrics_Ttm$agent <- (data_Grmetrics_Ttm$Drug)
 
 data_Grmetrics_Ttm$concentration = data_Grmetrics_Ttm$Final_conc_uM
 
@@ -280,16 +306,17 @@ rownames(data_Grmetrics_Ttm) <- NULL
 data_comb <- rbind(data_Grmetrics_Ctr, data_Grmetrics_Ttm)
 
 output1 = GRfit(inputData = data_comb, groupingVariables = 
-                  c('agent', 'time'), case = "C")
+                  c("cell_line", 'agent', 'time'), case = "C")
 
 
-GRbox(output1, metric ='GR50', groupVariable = 'time', 
-      pointColor = 'agent')
+GRbox(output1, metric ='GR50', groupVariable = c('cell_line'), 
+      pointColor = c("time"))
 
 output2 <- GRmetrics::GRgetMetrics(output1)
 
 ggplot(data_comb, aes(x = time, y = cell_count, color = factor(concentration)))+
-  geom_smooth()
+  geom_point()+
+  facet_wrap(~cell_line + agent)
 
 
 #GI50
@@ -542,3 +569,8 @@ growthsolution <- growthsolution %>% group_by(well, cell) %>% slice(1)
 ggplot(growthsolution, aes(cell, drug, fill = conf))+
   geom_tile()+
   scale_fill_gradient(low = "blue", high = "red")
+
+
+
+#TODO Prepare all data and  Fit a linear regression on GI50 and report the slope beta.. if there's a general trend, it should be picked up. Make a boxplot and report the slope on the y axis for each combination
+
