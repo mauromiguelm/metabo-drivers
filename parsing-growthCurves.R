@@ -1,5 +1,5 @@
 
-library(ggplot2); library(GRmetrics)
+library(ggplot2); library(GRmetrics); library(RColorBrewer)
 
 # import functions
 
@@ -48,6 +48,8 @@ data_corrected$HCT15_P1.txt$Time <- data_corrected$HCT15_P1.txt$Time +
 
 # removing bad wells based on first 24h  growth
 
+store_HCT15 <- data_corrected$HCT15_P1.txt # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+
 data_corrected <-
   
   lapply(names(data_corrected), FUN = function(x){
@@ -75,7 +77,9 @@ data_corrected <-
 
 names(data_corrected) <- fileNames
 
-data_corrected$HCT15_P1.txt <- data$HCT15_P1.txt  # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the uncorrected data
+data_corrected$HCT15_P1.txt <- store_HCT15  # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+
+rm(store_HCT15)
 
 # combining metadata of source.plates into growth_data
 
@@ -195,10 +199,6 @@ ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% 
   facet_wrap(~ Final_conc_uM) #FIXME When we plot one cell line, we have a few outliers. Remove these outliers.
 
 
-
-
-
-
 #TODO plot variation across replicates by well in the 384 well plate, hopefully only certain wells in the edge will have problems
 
 # maybe calculate intra replicate CV adn use ANOVA and check the variance by well, see if its consistant across CLs or if it
@@ -218,7 +218,6 @@ ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% 
 
 
 # GR metrics, their example code only use the endpoint and time at treatment, but I will try all time points
-# I will try with Clofarabine - HCT-15
 
 # we need to select time point zero as the time we treated the samples (as per their requirements)
 
@@ -237,7 +236,6 @@ data_GRmetrics <- data_corrected
 cell_line <- "HCT15"
 drug  <- "Docetaxel"
 time_treatment <- 24
-
 
 
 data_Grmetrics_Ttm <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # preparing the data for one drug
@@ -261,11 +259,15 @@ data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Time %in% match_time_intervals)
 data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Time >= time_treatment & Time <= 72)
 data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Time >= time_treatment & Time <= 72)
 
-data_Grmetrics_Ctr$Time <- ifelse(data_Grmetrics_Ctr$Time == min(data_Grmetrics_Ctr$Time), 0, data_Grmetrics_Ctr$Time) 
-data_Grmetrics_Ttm$Time <- ifelse(data_Grmetrics_Ttm$Time == min(data_Grmetrics_Ttm$Time), 0, data_Grmetrics_Ctr$Time)
+data_Grmetrics_Ctr$Time <- data_Grmetrics_Ctr %>% group_by(cell, Drug) %>% mutate(Time = ifelse(Time == min(Time), 0, Time)) %>% ungroup() %>% .$Time
+data_Grmetrics_Ttm$Time <- data_Grmetrics_Ttm %>% group_by(cell, Drug) %>% mutate(Time = ifelse(Time == min(Time), 0, Time)) %>% ungroup() %>% .$Time
+
+
+
+#data_Grmetrics_Ctr$Time <- ifelse(data_Grmetrics_Ctr$Time == min(data_Grmetrics_Ctr$Time), 0, data_Grmetrics_Ctr$Time) #FIXME for each cell line get a specific time, instead of general
+#data_Grmetrics_Ttm$Time <- ifelse(data_Grmetrics_Ttm$Time == min(data_Grmetrics_Ttm$Time), 0, data_Grmetrics_Ttm$Time)
 
 #TODO select only one time point, eg. 60h, and then calculate the GRmetric across this time point.. could be even 48h
-
 
 # Prepare data_Grmetrics_Ctr as example Case C
 
@@ -309,15 +311,30 @@ output1 = GRfit(inputData = data_comb, groupingVariables =
                   c("cell_line", 'agent', 'time'), case = "C")
 
 
+GRdrawDRC(output1)
+
 GRbox(output1, metric ='GR50', groupVariable = c('cell_line'), 
-      pointColor = c("time"))
+      pointColor = c("agent"))
 
 output2 <- GRmetrics::GRgetMetrics(output1)
 
-ggplot(data_comb, aes(x = time, y = cell_count, color = factor(concentration)))+
-  geom_point()+
-  facet_wrap(~cell_line + agent)
+cc <- scales::seq_gradient_pal("blue", "red")(seq(0,1,length.out= 7))
 
+#cc <- grDevices::colorRampPalette(colors = c("blue", "red"))
+
+data_figure <- subset(data_corrected, Drug %in% c("DMSO",drugs_in_screen))
+
+data_figure <- data_figure[!(data_figure$Final_conc_uM %in% c(33.3, 3.33)),]
+
+data_figure$Final_conc_uM <- ifelse(data_figure$Final_conc_uM == 333, 0, data_figure$Final_conc_uM)
+
+ggplot(subset(data_figure, Time >24 & Time < 72 ) , aes(x = Time, y = Conf, color = factor(Final_conc_uM)))+
+  geom_smooth(span = 0.8)+
+  facet_grid(~cell)+
+  scale_color_manual(values = cc)
+
+
+plot(output2$time, output2$GR50, xlab = "Time (h)", ylab = "GR50", col = output2$cell_line)
 
 #GI50
 
