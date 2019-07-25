@@ -81,6 +81,76 @@ data_corrected$HCT15_P1.txt <- store_HCT15  # For the HCT-15_P1, due to time poi
 
 rm(store_HCT15)
 
+# Fit the confluence for each well, and return fitted confluence. Keep the same plate map structure.
+
+base::lapply(names(data_corrected), function(plate_name){
+  
+  #plate_name =  names(data_corrected)[3] #FIXME delete me
+  
+  r.2.threshold = 0.8
+  
+  data_raw <- data_corrected[[plate_name]]
+  
+  fitted_data <- 
+  
+  lapply(unique(data_raw$Well), function(idx_well){
+    
+    #idx_well <- unique(data_raw$Well)[2] #FIXME delete me 
+    
+    data_well_raw <- subset(data_raw[,c("Time", "Conf", "Well")], Well == idx_well)
+    
+    min_scan_Time <- ceiling(min(data_well_raw$Time))
+    
+    max_scan_Time <- floor(max(data_well_raw$Time))
+    
+    model_pred_poly <- get_growthMetrics(data_well_raw)[[3]]
+    
+    time_sequence <- seq(min_scan_Time ,max_scan_Time,1)
+    
+    model_well_pred <- predict(model_pred_poly, data.frame(Time = time_sequence))
+    
+    pred_conf <- data.frame(Well = idx_well, Time = time_sequence, Conf = model_well_pred)
+    
+    well_metrics <- summary(model_pred_poly)
+    
+    well_metrics <- data.frame(Well = idx_well, adj.r.2 = well_metrics$adj.r.squared)
+    
+    return(list(pred_conf, well_metrics))
+    
+  })
+  
+  # save diagnostic plots
+  
+  diagnostics_well <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[2]]) ) #for each plate, plot diagnostic plots with the R-squared.. check if any of fits have ploblems
+  
+  save_plots_directory = "\\\\imsbnas.d.ethz.ch/sauer1/users/mauro/cell_culture_data/190310_pre_screen_test_cpddilution/figures"
+  
+  filename = paste("fitting-QC", plate_name, gsub(" ", "_",as.character(Sys.time())), ".png", sep = "_")
+  
+  filename = gsub(pattern = ":", replacement = "_", x = filename)
+  
+  bad_wells = diagnostics_well$Well[diagnostics_well$adj.r.2 < r.2.threshold]
+  
+  #print(paste(as.character(bad_wells), plate_name), sep = "_")
+  
+  png(filename = paste(save_plots_directory, filename , sep = "/"))
+  fig <- hist(diagnostics_well$adj.r.2, main = plate_name)
+  text( paste0("Adj.r.2 < 0.8 = ", length(bad_wells)) , x = fig$breaks[3], y = max(fig$counts))
+  dev.off()
+  
+  # return a df with the right columns
+  
+  pred_conf <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[1]]) ) #for each plate, plot diagnostic plots with the R-squared.. check if any of fits have ploblems
+  
+  pred_conf <- subset(pred_conf, !(Well %in% bad_wells))
+  
+  return(pred_conf)
+  
+}) -> data_corrected
+
+
+names(data_corrected) <- fileNames
+
 # combining metadata of source.plates into growth_data
 
 
@@ -134,12 +204,9 @@ data_corrected <-
     
   } )
 
-
 names(data_corrected) <- fileNames
 
-
 # relabelling bad wells based on Echo transfer. I can relabel those with medium, to increase the number of controls
-
 
 data_corrected <-
   
@@ -167,9 +234,17 @@ data_corrected <-
 
 names(data_corrected) <- fileNames
 
+# checking if exceptions show the same behavious as PBS or DMSO
+
+data_corrected <- do.call(rbind, data_corrected)
+
+# removing DMSO that is not 33.3 and 3.33, as it causes many data analysis problems
+
+data_corrected <- subset(data_corrected, !(Drug == "DMSO" & Final_conc_uM != 333) )
+
 # plotting all data to check for inconsistencies
 
-cc <- scales::seq_gradient_pal("lightblue", "red")(seq(0,1,length.out= length(unique(data_corrected$Final_conc_uM))))
+#$cc <- scales::seq_gradient_pal("lightblue", "red")(seq(0,1,length.out= length(unique(data_corrected$Final_conc_uM))))
 
 cc <- scales::seq_gradient_pal("lightblue", "red")(seq(0,1,length.out= 9))
 
@@ -179,25 +254,17 @@ ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & cell == "A
   scale_color_manual(values = cc)+
   facet_wrap(~Drug+cell)
 
-
-
-# checking if exceptions show the same behavious as PBS or DMSO
-
-data_corrected <- do.call(rbind, data_corrected)
-
-data_corrected$Time <- round(data_corrected$Time,0)
+data_corrected$Time <- round(data_corrected$Time,0)  
 
 ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% c("DMSO")),
        aes(x = Time, y = Conf, color = factor(Well), group = factor(Well)))+
   geom_line()+
   facet_grid(~cell) #FIXME When we plot DMSO by cell line, we have a few outliers. Remove these outliers.
 
-
 ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% c("Pemetrexed", "DMSO") & cell == "NCIH460"),
        aes(x = Time, y = Conf, color = factor(Well), group = factor(Well)))+
   geom_line()+
   facet_wrap(~ Final_conc_uM) #FIXME When we plot one cell line, we have a few outliers. Remove these outliers.
-
 
 #TODO plot variation across replicates by well in the 384 well plate, hopefully only certain wells in the edge will have problems
 
@@ -225,18 +292,15 @@ ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% 
 #time_treatment <- 24
 
 
-drugs_in_screen <- c("Docetaxel")  #c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO", NA, "Water", "WATER", "H2O", "Dmso", "Control", "Ctrl"))]))
-
-data_corrected[data_corrected$Drug %in% drugs_in_screen,]
+drugs_in_screen <- c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO", NA, "Water", "WATER", "H2O", "Dmso", "Control", "Ctrl", "exception"))]))
 
 matrix()   # columns will be drugs, rows will be cell lines
 
 data_GRmetrics <- data_corrected
 
-cell_line <- "HCT15"
+cell_line <- "NCIH460"
 drug  <- "Docetaxel"
 time_treatment <- 24
-
 
 data_Grmetrics_Ttm <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # preparing the data for one drug
 data_Grmetrics_Ctr <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # getting the matching controls ready
@@ -311,10 +375,14 @@ output1 = GRfit(inputData = data_comb, groupingVariables =
                   c("cell_line", 'agent', 'time'), case = "C")
 
 
-GRdrawDRC(output1)
+GRdrawDRC(output1, points =F)
 
 GRbox(output1, metric ='GR50', groupVariable = c('cell_line'), 
       pointColor = c("agent"))
+
+GRbox(output1, metric ='GR50', groupVariable = c('agent'), 
+      pointColor = c("cell_line"))
+
 
 output2 <- GRmetrics::GRgetMetrics(output1)
 
@@ -324,14 +392,16 @@ cc <- scales::seq_gradient_pal("blue", "red")(seq(0,1,length.out= 7))
 
 data_figure <- subset(data_corrected, Drug %in% c("DMSO",drugs_in_screen))
 
-data_figure <- data_figure[!(data_figure$Final_conc_uM %in% c(33.3, 3.33)),]
+data_figure <- data_figure[!(as.character(data_figure$Final_conc_uM) %in% c("33.3", "3.33")),]
 
 data_figure$Final_conc_uM <- ifelse(data_figure$Final_conc_uM == 333, 0, data_figure$Final_conc_uM)
 
+
 ggplot(subset(data_figure, Time >24 & Time < 72 ) , aes(x = Time, y = Conf, color = factor(Final_conc_uM)))+
-  geom_smooth(span = 0.8)+
+  geom_smooth()+
   facet_grid(~cell)+
-  scale_color_manual(values = cc)
+  scale_color_manual(values = cc)+
+  guides(color=guide_legend(title="Concentration (uM)"))
 
 
 plot(output2$time, output2$GR50, xlab = "Time (h)", ylab = "GR50", col = output2$cell_line)
