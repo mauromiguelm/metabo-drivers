@@ -292,7 +292,7 @@ ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% 
 #time_treatment <- 24
 
 
-drugs_in_screen <- c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO", NA, "Water", "WATER", "H2O", "Dmso", "Control", "Ctrl", "exception"))]))
+drugs_in_screen <- "17-AAG"  #c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO", NA, "Water", "WATER", "H2O", "Dmso", "Control", "Ctrl", "exception"))]))
 
 matrix()   # columns will be drugs, rows will be cell lines
 
@@ -397,7 +397,7 @@ data_figure <- data_figure[!(as.character(data_figure$Final_conc_uM) %in% c("33.
 data_figure$Final_conc_uM <- ifelse(data_figure$Final_conc_uM == 333, 0, data_figure$Final_conc_uM)
 
 
-ggplot(subset(data_figure, Time >24 & Time < 72 ) , aes(x = Time, y = Conf, color = factor(Final_conc_uM)))+
+ggplot(subset(subset(data_figure, cell == "NCIH460"), Time > 24 & Time < 72 ) , aes(x = Time, y = Conf, color = factor(Final_conc_uM)))+
   geom_smooth()+
   facet_grid(~cell)+
   scale_color_manual(values = cc)+
@@ -406,258 +406,111 @@ ggplot(subset(data_figure, Time >24 & Time < 72 ) , aes(x = Time, y = Conf, colo
 
 plot(output2$time, output2$GR50, xlab = "Time (h)", ylab = "GR50", col = output2$cell_line)
 
-#GI50
 
-# Compare metrics with DTP data, and based on that choose the best metric
 
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
-########## old code ##############
+# # GR analysis w.r.t. time -----------------------------------------------
 
-analyze_growth_zero <-
-  function(data_source){
 
-  data_source <- filtered_data[filtered_data$cell == cell & filtered_data$well == well,c("time", "conf")]
+# heatmap GR over time
 
-  # modelling confluence over time ------------------------------------------
+View(data_comb)
 
-  data <- list()
+output2$drug_cell <- paste(output2$agent, output2$cell_line, sep = "_") 
 
-  data$store_vars <- data.frame(time = data_source[1],
-                                confluence = data_source[2])
+output2$GR50 <- ifelse(output2$GR50 == Inf | output2$GR50 == -Inf, NA, output2$GR50)
 
-  names(data$store_vars) <- c("time", "confluence")
+ggplot2::ggplot(subset(output2, agent == "17-AAG") ,aes(x = time, y = drug_cell, fill = (GR50))) + geom_tile()+
+  scale_fill_continuous(na.value = "white")+
+  theme(axis.text=element_text(size=20), legend.text = element_text(size = 20), legend.title=element_text(size=20), axis.title = element_text(size=20))
 
-  # variables
+library(drc)
 
-  poly_degree = 5 # degrees of polynomial fit
+### MAURO ###
+### MAURO ###
+### MAURO ###
 
-  # modelling confluence wtih a polynomial regression model ---------
+#TODO create a model that we can compare
 
-  data$growth_model <- lm(confluence ~ poly(time, degree = poly_degree, raw = t), data$store_vars)
-
-  # we can plot it to see if the fit was good
-
-  data$store_vars$fitted <- fitted(data$growth_model) #this function gives the predicted confluence based on the original time vector supplied
-
-  #plot(data$store_vars$time, data$store_vars$confluence, type = "p") # plotting confluence over time
-  #lines(data$store_vars$time, data$store_vars$fitted, type = "l", col = "red") #plotting fitted line
-
-  polynomial_deriv <- function(x) {  #this function takes the first derivative, or the growth rate equation
-
-      terms <- coef(x)
-
-      stopifnot(names(terms)[1]=="(intercept)")
-
-      filter_terms <- terms[-1] #remove intercept
-
-      stopifnot(all(grepl("^poly", names(filter_terms))))
-
-      degrees <- as.numeric(gsub(pattern = "poly\\(.*\\)", replacement = "", names(filter_terms)))
-
-      terms_deriv <- setnames(c(filter_terms * degrees, 0), names(terms))
-
-      terms_deriv[is.na(terms_deriv)] <- 0
-
-      return(matrix(terms_deriv, ncol = 1))
-
-    }
-
-  data$store_vars$growth_rate <-
-    model.matrix(data$growth_model) %*% polynomial_deriv(data$growth_model)
-
-  return(diff(sign(data$store_vars$growth_rate)))
-
-}
-
-# fixing time problems in dataset ---------------------------------------
-
-# hct15 did not record some wells, so i am correcting for this
-
-data$hct15_p1.txt$time <- data$hct15_p1.txt$time +
-  (max(data$a549_p1.txt$time) - max(data$hct15_p1.txt$time))
-
-# filtering wells ---------------------------------------------------------
-
-#removing bad wells
-
-store_outlier <-
-
-  sapply(names(data), use.names = t, function(x){
-
-    plate_name = x
-
-    x = data[[x]]
-
-    good_wells <-
-    filter_growth_outliers(plate_name = plate_name,data = x, time_control = 24, save_diag_plots = t,
-                           save_plots_directory = "\\\\imsbnas.d.ethz.ch/sauer1/users/mauro/cell_culture_data/190310_pre_screen_test_cpddilution/figures")
-
-    new_data <-
-    x[!(x[,"well"] %in% good_wells$wells_exception),]
-
-    return(list(new_data, exception_number = good_wells$wells_exception_number))
-
-    })
-
-store_outlier[[1]]
-
-#lapply(filtered_data, function(x) plot_multi_well(input_df =  x, max_timepoint = 24))
-
-
-# removing wells that echo did not transfer
-
-source("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\mauro\\cell_culture_data\\190310_pre_screen_test_cpddilution\\exceptions\\log_processing.r")
-
-source_plates <- data.frame(filenames = list.files("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\mauro\\cell_culture_data\\190310_pre_screen_test_cpddilution\\20190513\\results"))
-
-source_plates$sourceid <- ifelse(grepl(pattern = "p1", source_plates$filenames), "1msp001", "2msp001")
-
-filtered_data <-
-
-  lapply(names(data), function(x){
-
-    #x = "a549_p1.txt"
-
-    source_id <- unlist(subset(source_plates, filenames == x, sourceid))
-
-    exception_wells <- subset(exceptions, destination.plate.name  == source_id, destination.well, drop = t)
-
-    tmp_data <- filtered_data[[x]]
-
-    tmp_data <- tmp_data[!(tmp_data$well %in% exception_wells),]
-
-    tmp_data$cell <- strsplit(x, split = "_")[[1]][1]
-
-    tmp_data$source_plate <- strsplit(x, split = "_")[[1]][2]
-
-    return(tmp_data)
-
-  })
-
-
-# combining metadata of source.plates into growth_data
-
-source_layout <-# import source plate layout data
-
-  lapply(list.files("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\mauro\\cpd_data\\190508_msp_layout",
-                    pattern = "randomized",
-                    full.names = t),
-         function(x) {
-
-           tmp_data  = readxl::read_xls(x)
-
-           tmp_data$well = paste0(tmp_data$row, tmp_data$column)
-
-           return(tmp_data)
-
-         })
-
-
-filtered_data <-
-
-lapply(filtered_data, function(x){
-
-  stopifnot(require(dplyr))
-
-  #x = filtered_data[[1]]
-
-  if(grepl(pattern = "p1", x = x$source_plate[1])){
-
-    tmp_data <- inner_join( data.frame(x), source_layout[[1]][,c("well","drug" , "final_conc_um")], by = "well")
-
-    return(tmp_data)
-
-  }else if(grepl(pattern = "p2", x = x$source_plate[1])){
-
-    tmp_data <- inner_join( data.frame(x), source_layout[[2]][,c("well","drug" , "final_conc_um")], by = "well")
-
-    return(tmp_data)
+model_growth <- function(cell_tz, t, t_onset, k, maxeff, halfeff, conc, hill){
+  
+  maxeff <- ifelse(t_onset > t, 0, maxeff)
+  
+  if(t >= t_onset){
+    
+    cell_tz <- cell_tz * exp( ( t_onset * k ) )
+    
+    t <- t - t_onset
+    
+    return( cell_tz * exp( ( t * k *( 1 - ( (maxeff*conc ** hill )/ (halfeff + conc ** hill) ) ) ) ) )
 
   }else{
+    
+    return( cell_tz * exp( ( t * k *( 1 - ( (maxeff*conc ** hill )/ (halfeff + conc ** hill) ) ) ) ) )
 
-    stop("some experimental plate could not be matched to a source plate layout.")
-
-  }
-
-} )
-
-
-
-# combine dataframes
-
-filtered_data <- do.call(rbind, filtered_data)
-filtered_data <- filtered_data[!(is.na(filtered_data$drug)),]
-
-
-(plot <-
-
-ggplot(subset(filtered_data, source_plate= "p1.txt"), aes(x = time, y = conf, color = factor(final_conc_um)))+
-  geom_smooth(formula = y ~ poly(x, 6), method = "lm")+
-  facet_wrap(~drug + cell, nrow = 5)+
-  ggplot2::theme_minimal()+
-  geom_vline(xintercept = 48, colour = "red"))
-
-ggsave(plot = plot, filename = "alldoseresponseplots.png",
-       path = "\\\\imsbnas.d.ethz.ch\\sauer1\\users\\mauro\\cell_culture_data\\190310_pre_screen_test_cpddilution\\figures", device = "png",
-       width = 30, height = 15)
-
-
-
-# calculating second derivative, where is first zero?
-
-
-filtered_data <- subset(filtered_data, source_plate == "p1.txt" & time <= 72)
-
-growthsolution <- filtered_data
-
-for(cell in unique(filtered_data$cell)){
-
-  for(well in unique(filtered_data$well)){
-
-
-
-    print(cell)
-    print(well)
-
-    if(nrow(filtered_data[filtered_data$cell == cell & filtered_data$well == well,c("time", "conf")])== 0){
-      next()
     }
-
-    store <-
-
-    analyze_growth_zero(
-
-    filtered_data[filtered_data$cell == cell & filtered_data$well == well,c("time", "conf")]
-    )
-
-
-    store <- store[!(is.na(store))]
-
-    store <- sum(!(store == 0))
-
-    growthsolution[growthsolution$well == well & growthsolution$cell == cell,"conf"] <- store
-
-  }
-
 }
+  
 
-growthsolution <- growthsolution %>% group_by(well, cell) %>% slice(1)
+colfun <- colorRampPalette(c("firebrick1","firebrick4"))
 
-ggplot(growthsolution, aes(cell, drug, fill = conf))+
-  geom_tile()+
-  scale_fill_gradient(low = "blue", high = "red")
+time <- seq(0,3,0.01)
+
+conc <- seq(0.5,1.5,0.2)
+
+t_onset <- 2.5
+
+matrix_data <- sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = Inf, k =  0.5, maxeff = 1, halfeff = 1.5, conc = 1.5, hill = 1.6))
+
+matrix_data <- base::rbind(matrix_data,
+                           sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = t_onset, k =  0.5, maxeff = 1.5, halfeff = halfeff, conc = conc, hill = 1.6)))
+
+colnames(matrix_data) <- time
+
+matrix_data <- t(matrix_data)
+
+plot(rownames(matrix_data), matrix_data[,1] , type = "l", col = "blue", main = "Dynamic Growth Response", xlab = "Time [Days]", ylab = "Cell Count",
+     lwd = 3)
+
+abline(v = t_onset, col = "orange", lwd = 3)
+
+invisible(
+lapply(2:ncol(matrix_data), function (col) lines(rownames(matrix_data), matrix_data[,col], col = colfun(ncol(matrix_data))[col], lwd = 2.5))
+)
+lines(rownames(matrix_data), matrix_data[,1] , type = "l", col = "blue", lwd = 3)
+legend(as.numeric(max(rownames(matrix_data)))/20, max(matrix_data), 
+       legend = c("Control", paste("c = ", conc)), col = c("blue", colfun(ncol(matrix_data)-1)), lty = 1, lwd = 3,
+       box.lty = 0)
+
+legend(as.numeric(max(rownames(matrix_data)))/20, max(matrix_data)/1.4, 
+       legend = c(paste0("D = ", t_onset)), col = c("orange"), lty = 1, lwd = 3,
+       box.lty = 0)
 
 
+#TODO test GR50, IC50 and GI50 for the previous data 
 
-#TODO Prepare all data and  Fit a linear regression on GI50 and report the slope beta.. if there's a general trend, it should be picked up. Make a boxplot and report the slope on the y axis for each combination
+#TODO sample the space of growth rates from 1.9 to 3.9
+
+
+#TODO create a sampling model, where we will get the best estimate and use less computer 
+#TODO compare if we see any trends between drugs, which could be linked to mechanism of action. Eg. pick a drug with a very early vs. late response and compare
+
+
+### UWE ###
+### UWE ###
+### UWE ###  
+
+#TODO See how many cell lines change from sensitive to resistant
+#TODO compare established metrics (GR50m EC50, GI50, IC50, etc.) and report to Uwe
+#TODO try to prove it functionally using my data (?) on those examples
+#TODO 
+#TODO 
+
+#TODO use Resazurin to prove its indeed the breaking point 
+
+### MATTIA ###
+### MATTIA ###
+### MATTIA ###
+
+#TODO  remove confluence offset by normalizing by confluence 
+#TODO the time point D doesn’t match figure.. figure out a way to improve
 
