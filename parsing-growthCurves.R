@@ -23,16 +23,16 @@ setwd("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\Mauro\\Cell_culture_data\\190310_Pr
 fileNames <- list.files(full.names = F, pattern = ".txt")
 
 data <- 
-
-lapply(fileNames, function(x) {
   
-  df <-
-  ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = x, Plate_size = 384, FileDirectory = getwd())
-  
-  df$Time <- as.numeric(df$Time)
-  
-  return(df)
-  
+  lapply(fileNames, function(x) {
+    
+    df <-
+      ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = x, Plate_size = 384, FileDirectory = getwd())
+    
+    df$Time <- as.numeric(df$Time)
+    
+    return(df)
+    
   })
 
 names(data) <- fileNames
@@ -69,7 +69,7 @@ data_corrected <-
     
     print(paste("Plate:", plate_name,
                 "Exception-Number:",good_wells$wells_exception_number
-                ))
+    ))
     
     return(new_data)
     
@@ -92,32 +92,32 @@ base::lapply(names(data_corrected), function(plate_name){
   data_raw <- data_corrected[[plate_name]]
   
   fitted_data <- 
-  
-  lapply(unique(data_raw$Well), function(idx_well){
     
-    #idx_well <- unique(data_raw$Well)[2] #FIXME delete me 
-    
-    data_well_raw <- subset(data_raw[,c("Time", "Conf", "Well")], Well == idx_well)
-    
-    min_scan_Time <- ceiling(min(data_well_raw$Time))
-    
-    max_scan_Time <- floor(max(data_well_raw$Time))
-    
-    model_pred_poly <- get_growthMetrics(data_well_raw)[[3]]
-    
-    time_sequence <- seq(min_scan_Time ,max_scan_Time,1)
-    
-    model_well_pred <- predict(model_pred_poly, data.frame(Time = time_sequence))
-    
-    pred_conf <- data.frame(Well = idx_well, Time = time_sequence, Conf = model_well_pred)
-    
-    well_metrics <- summary(model_pred_poly)
-    
-    well_metrics <- data.frame(Well = idx_well, adj.r.2 = well_metrics$adj.r.squared)
-    
-    return(list(pred_conf, well_metrics))
-    
-  })
+    lapply(unique(data_raw$Well), function(idx_well){
+      
+      #idx_well <- unique(data_raw$Well)[2] #FIXME delete me 
+      
+      data_well_raw <- subset(data_raw[,c("Time", "Conf", "Well")], Well == idx_well)
+      
+      min_scan_Time <- ceiling(min(data_well_raw$Time))
+      
+      max_scan_Time <- floor(max(data_well_raw$Time))
+      
+      model_pred_poly <- get_growthMetrics(data_well_raw)[[3]]
+      
+      time_sequence <- seq(min_scan_Time ,max_scan_Time,1)
+      
+      model_well_pred <- predict(model_pred_poly, data.frame(Time = time_sequence))
+      
+      pred_conf <- data.frame(Well = idx_well, Time = time_sequence, Conf = model_well_pred)
+      
+      well_metrics <- summary(model_pred_poly)
+      
+      well_metrics <- data.frame(Well = idx_well, adj.r.2 = well_metrics$adj.r.squared)
+      
+      return(list(pred_conf, well_metrics))
+      
+    })
   
   # save diagnostic plots
   
@@ -442,27 +442,28 @@ model_growth <- function(cell_tz, t, t_onset, k, maxeff, halfeff, conc, hill){
     t <- t - t_onset
     
     return( cell_tz * exp( ( t * k *( 1 - ( (maxeff*conc ** hill )/ (halfeff + conc ** hill) ) ) ) ) )
-
+    
   }else{
     
     return( cell_tz * exp( ( t * k *( 1 - ( (maxeff*conc ** hill )/ (halfeff + conc ** hill) ) ) ) ) )
-
-    }
+    
+  }
 }
-  
+
 
 colfun <- colorRampPalette(c("firebrick1","firebrick4"))
 
 time <- seq(0,3,0.01)
 
-conc <- seq(0.5,1.5,0.2)
+conc <- seq(0.5,8,length.out = 6)
 
-t_onset <- 2.5
+t_onset <- 1.5
 
-matrix_data <- sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = Inf, k =  0.5, maxeff = 1, halfeff = 1.5, conc = 1.5, hill = 1.6))
+matrix_data <- sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = Inf, k =  0.5, maxeff = 1.0, halfeff = 1.5, conc = 1.5, hill = 1.6))
 
 matrix_data <- base::rbind(matrix_data,
-                           sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = t_onset, k =  0.5, maxeff = 1.5, halfeff = halfeff, conc = conc, hill = 1.6)))
+                           sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = t_onset, k =  0.5, maxeff = 1.0, halfeff = 1.5, conc = conc, hill = 1.6)))
+
 
 colnames(matrix_data) <- time
 
@@ -474,7 +475,7 @@ plot(rownames(matrix_data), matrix_data[,1] , type = "l", col = "blue", main = "
 abline(v = t_onset, col = "orange", lwd = 3)
 
 invisible(
-lapply(2:ncol(matrix_data), function (col) lines(rownames(matrix_data), matrix_data[,col], col = colfun(ncol(matrix_data))[col], lwd = 2.5))
+  lapply(2:ncol(matrix_data), function (col) lines(rownames(matrix_data), matrix_data[,col], col = colfun(ncol(matrix_data))[col], lwd = 2.5))
 )
 lines(rownames(matrix_data), matrix_data[,1] , type = "l", col = "blue", lwd = 3)
 legend(as.numeric(max(rownames(matrix_data)))/20, max(matrix_data), 
@@ -488,10 +489,96 @@ legend(as.numeric(max(rownames(matrix_data)))/20, max(matrix_data)/1.4,
 
 #TODO test GR50, IC50 and GI50 for the previous data 
 
-#TODO sample the space of growth rates from 1.9 to 3.9
+
+# sample the space of growth rates from 1.9 to 3.9, and run GRmetrics to compare GI50 with t_onset  --------
+
+# generate new data again
+
+time <- seq(0,3,0.01)
+
+t_ttm <- 1
+
+t_GRinterest <- c(0,1,3)
+
+conc <- matrix(base::rep(c(0,seq(0.5,8,length.out = 6)),  each = 1000), dimnames = list(NULL, "concentration"))
+
+params <- matrix(data = c(runif(1000, min = 0.3, max = 1), runif(1000, min = 1.5, max = 2.5)), dimnames = list(NULL, c("k", "t_onset")), nrow = 1000, ncol = 2)
+
+params <- cbind(do.call("rbind", rep(list(params), 7)), conc)
+
+#FIXME for each k and t_onset, 
+
+sapply(time, function(xtime)
+  
+  model_growth(cell_tz = 5, t = xtime, t_onset = params[,"t_onset"], k =  params[,"k"], maxeff = 1.0, halfeff = 1.5, conc = params[,"concentration"], hill = 1.6)
+  
+  #FIXME get a list of function args, to plot them later... they are evaluated in order, k[1] , t_onset[1]...k[2] , t_onset[2]  SOLVED, BUT CHECK website bellow
+  # https://stackoverflow.com/questions/18586758/how-to-evaluate-arguments-of-a-function-call-inside-other-function-in-r
+
+    ) -> matrix_data
+
+colnames(matrix_data) <- time
+
+matrix_data <- cbind(params, matrix_data)
+
+# calculate GR50 based on GRmetrics
+
+library(GRmetrics)
+
+tidyr::gather(data.frame(matrix_data, check.names = F), key = "time", value = "cell_count", -c("k", "t_onset", "concentration")) -> matrix_data
+
+matrix_data <- cbind(data.frame(agent = paste(matrix_data$k, matrix_data$t_onset, sep = "_")), matrix_data)
 
 
-#TODO create a sampling model, where we will get the best estimate and use less computer 
+lapply(unique(matrix_data$agent), function(agent){
+  
+  tmp <- matrix_data[matrix_data$agent == unique(matrix_data$agent)[agent] & matrix_data$time %in% t_GRinterest,]
+  
+  tmp <- tmp[tmp$time != 0,] # replace t = 0 with t = t_ttm, as grmetrics require time at treatment
+  
+  tmp$time <- ifelse(tmp$time == t_ttm, 0, tmp$time)
+  
+  output1 = GRfit(inputData = tmp, groupingVariables = 
+                    c('agent'), case = "C")
+  
+  output1 <- GRmetrics::GRgetMetrics(output1)
+  
+  return <- data.frame(k = as.numeric(strsplit(output1$experiment, split = "_")[[1]][1]),
+                       t_onset = as.numeric(strsplit(output1$experiment, split = "_")[[1]][2]),
+                       output1[,6:21])
+  
+  return(return)
+  
+}) -> tmp
+
+tmp <- do.call(rbind, tmp)
+
+
+tmp_fig <- tmp
+
+tmp_fig <- tmp_fig[tmp_fig$t_onset<2,]
+
+tmp_fig$GR50 <- ifelse(tmp_fig$GR50 == Inf | tmp_fig$GR50 == -Inf, NA, tmp_fig$GR50)
+
+ggplot(tmp_fig, aes(x = k, y = t_onset, col = (GR50)))+
+  geom_point()+
+  scale_color_gradient(low="blue", high="red")
+
+ggplot(tmp_fig, aes(x = k, y = t_onset, col = h_GR))+
+  geom_point()+
+  scale_color_gradient(low="blue", high="red")
+
+ggplot(tmp_fig, aes(x = k, y = t_onset, col = log(IC50)))+
+  geom_point()+
+  scale_color_gradient(low="blue", high="red")
+
+ggplot(tmp_fig, aes(x = k, y = t_onset, col = h))+
+  geom_point()+
+  scale_color_gradient(low="blue", high="red")
+
+
+
+#TODO for D estimation, create a sampling model, where we will get the best estimate and use less computer 
 #TODO compare if we see any trends between drugs, which could be linked to mechanism of action. Eg. pick a drug with a very early vs. late response and compare
 
 
