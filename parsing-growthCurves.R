@@ -248,13 +248,13 @@ data_corrected <- subset(data_corrected, !(Drug == "DMSO" & Final_conc_uM != 333
 
 cc <- scales::seq_gradient_pal("lightblue", "red")(seq(0,1,length.out= 9))
 
-ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & cell == "A549" & Drug %in% c("Docetaxel", "DMSO")),
+ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & cell == "NCIH460" & Drug %in% c("Chlormethine", "DMSO")),
        aes(x = Time, y = Conf, color = factor(Final_conc_uM), group = factor(Final_conc_uM)))+
   geom_smooth()+
   scale_color_manual(values = cc)+
   facet_wrap(~Drug+cell)
 
-data_corrected$Time <- round(data_corrected$Time,0)  
+data_corrected$Time <- round(data_corrected$Time,0)
 
 ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% c("DMSO")),
        aes(x = Time, y = Conf, color = factor(Well), group = factor(Well)))+
@@ -457,12 +457,14 @@ time <- seq(0,3,0.01)
 
 conc <- seq(0.5,8,length.out = 6)
 
-t_onset <- 1.5
+t_onset <- 0.52
 
-matrix_data <- sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = Inf, k =  0.5, maxeff = 1.0, halfeff = 1.5, conc = 1.5, hill = 1.6))
+half_eff <- 7.28
+
+matrix_data <- sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = Inf, k =  0.3, maxeff = 1.0, halfeff = half_eff, conc = 1.5, hill = 1.6))
 
 matrix_data <- base::rbind(matrix_data,
-                           sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = t_onset, k =  0.5, maxeff = 1.0, halfeff = 1.5, conc = conc, hill = 1.6)))
+                           sapply(time, function(xtime) model_growth(cell_tz = 5,t = xtime, t_onset = t_onset, k =  0.3, maxeff = 1.0, halfeff = half_eff, conc = conc, hill = 1.6)))
 
 
 colnames(matrix_data) <- time
@@ -483,7 +485,7 @@ legend(as.numeric(max(rownames(matrix_data)))/20, max(matrix_data),
        box.lty = 0)
 
 legend(as.numeric(max(rownames(matrix_data)))/20, max(matrix_data)/1.4, 
-       legend = c(paste0("D = ", t_onset)), col = c("orange"), lty = 1, lwd = 3,
+       legend = c(paste0("half effect = ", half_eff)), col = c("orange"), lty = 1, lwd = 3,
        box.lty = 0)
 
 
@@ -502,7 +504,15 @@ t_GRinterest <- c(0,1,3)
 
 conc <- matrix(base::rep(c(0,seq(0.5,8,length.out = 6)),  each = 1000), dimnames = list(NULL, "concentration"))
 
-params <- matrix(data = c(runif(1000, min = 0.3, max = 1), runif(1000, min = 1.5, max = 2.5)), dimnames = list(NULL, c("k", "t_onset")), nrow = 1000, ncol = 2)
+k = 0.3
+
+
+# params bellow sample k and t_onset
+#params <- matrix(data = c(runif(1000, min = 0.3, max = 1), runif(1000, min = 1.5, max = 2.5)), dimnames = list(NULL, c("k", "t_onset")), nrow = 1000, ncol = 2)
+
+# params bellow keep k constant and samples t_onset
+
+params <- matrix(data = c(runif(1000, min = 1.1, max = 8), runif(1000, min = 0.5, max = 2.5)), dimnames = list(NULL, c("halfeff", "t_onset")), nrow = 1000, ncol = 2)
 
 params <- cbind(do.call("rbind", rep(list(params), 7)), conc)
 
@@ -510,7 +520,7 @@ params <- cbind(do.call("rbind", rep(list(params), 7)), conc)
 
 sapply(time, function(xtime)
   
-  model_growth(cell_tz = 5, t = xtime, t_onset = params[,"t_onset"], k =  params[,"k"], maxeff = 1.0, halfeff = 1.5, conc = params[,"concentration"], hill = 1.6)
+  model_growth(cell_tz = 5, t = xtime, t_onset = params[,"t_onset"], k =  k, maxeff = 1.0, halfeff = params[,"halfeff"], conc = params[,"concentration"], hill = 1.6)
   
   #FIXME get a list of function args, to plot them later... they are evaluated in order, k[1] , t_onset[1]...k[2] , t_onset[2]  SOLVED, BUT CHECK website bellow
   # https://stackoverflow.com/questions/18586758/how-to-evaluate-arguments-of-a-function-call-inside-other-function-in-r
@@ -525,9 +535,9 @@ matrix_data <- cbind(params, matrix_data)
 
 library(GRmetrics)
 
-tidyr::gather(data.frame(matrix_data, check.names = F), key = "time", value = "cell_count", -c("k", "t_onset", "concentration")) -> matrix_data
+tidyr::gather(data.frame(matrix_data, check.names = F), key = "time", value = "cell_count", -c("halfeff", "t_onset", "concentration")) -> matrix_data
 
-matrix_data <- cbind(data.frame(agent = paste(matrix_data$k, matrix_data$t_onset, sep = "_")), matrix_data)
+matrix_data <- cbind(data.frame(agent = paste(matrix_data$halfeff, matrix_data$t_onset, sep = "_")), matrix_data)
 
 
 lapply(unique(matrix_data$agent), function(agent){
@@ -543,7 +553,7 @@ lapply(unique(matrix_data$agent), function(agent){
   
   output1 <- GRmetrics::GRgetMetrics(output1)
   
-  return <- data.frame(k = as.numeric(strsplit(output1$experiment, split = "_")[[1]][1]),
+  return <- data.frame(halfeff = as.numeric(strsplit(output1$experiment, split = "_")[[1]][1]),
                        t_onset = as.numeric(strsplit(output1$experiment, split = "_")[[1]][2]),
                        output1[,6:21])
   
@@ -554,29 +564,49 @@ lapply(unique(matrix_data$agent), function(agent){
 tmp <- do.call(rbind, tmp)
 
 
+library(plotly)
+
 tmp_fig <- tmp
 
 tmp_fig <- tmp_fig[tmp_fig$t_onset<2,]
 
 tmp_fig$GR50 <- ifelse(tmp_fig$GR50 == Inf | tmp_fig$GR50 == -Inf, NA, tmp_fig$GR50)
 
-ggplot(tmp_fig, aes(x = k, y = t_onset, col = (GR50)))+
+ggplot(tmp_fig, aes(x = (halfeff), y = t_onset, col = (GR50)))+
   geom_point()+
   scale_color_gradient(low="blue", high="red")
 
-ggplot(tmp_fig, aes(x = k, y = t_onset, col = h_GR))+
+plot_ly(y = tmp_fig$halfeff, color = tmp_fig$t_onset, x = tmp_fig$GR50,
+        mode = "markers", size = tmp_fig$GR50)
+
+
+ggplot(tmp_fig, aes(x = halfeff, y = t_onset, col = h_GR))+
   geom_point()+
   scale_color_gradient(low="blue", high="red")
 
-ggplot(tmp_fig, aes(x = k, y = t_onset, col = log(IC50)))+
+ggplot(tmp_fig, aes(x = halfeff, y = t_onset, col = log(IC50)))+
   geom_point()+
   scale_color_gradient(low="blue", high="red")
 
-ggplot(tmp_fig, aes(x = k, y = t_onset, col = h))+
+ggplot(tmp_fig, aes(x = halfeff, y = t_onset, col = log(h)))+
   geom_point()+
   scale_color_gradient(low="blue", high="red")
 
+pl <- plot(tmp$t_onset, log10(log10(tmp$GR50)), type = "p",
+     xlab = "t_onset",
+     ylab = "log(GR50)")
 
+library(ggfortify)
+
+tmp.pca <-  (prcomp(x = t(tmp_fig[,c(1,2,4)]), center = T, scale = T))
+
+autoplot(tmp.pca, data = tmp_fig, colour = "GR50")
+
+autoplot(tmp.pca, data = tmp_fig, colour = "GR50",  loadings = TRUE, loadings.colour = 'blue',loadings.label = F, loadings.label.size = 10)
+
+
+
+# for same k, what is the dependency of t_onset and GR50? is it linear, exponential?
 
 #TODO for D estimation, create a sampling model, where we will get the best estimate and use less computer 
 #TODO compare if we see any trends between drugs, which could be linked to mechanism of action. Eg. pick a drug with a very early vs. late response and compare
