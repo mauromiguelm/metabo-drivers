@@ -1,5 +1,5 @@
 
-library(ggplot2); library(GRmetrics); library(RColorBrewer)
+library(ggplot2); library(RColorBrewer)
 
 # import functions
 
@@ -7,24 +7,38 @@ source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\CellCultureAnalysis.R"
 
 source("C:\\Users\\masierom\\polybox\\Programing\\Project_exometabolites\\modelling_growth_curves.R")
 
-# Importing source plates
+# Importing exceptions
 
-source("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\mauro\\cell_culture_data\\190310_pre_screen_test_cpddilution\\exceptions\\log_processing.r")
+source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\exceptions\\log_processing.r")
 
-source_plates <- data.frame(filenames = list.files("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\mauro\\cell_culture_data\\190310_pre_screen_test_cpddilution\\20190513\\results", pattern = ".txt"))
+## Importing source plates
+
+setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\growthData")
+
+source_plates <- data.frame(
+  filenames = list.files(
+    path = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\Growthdata\\",
+    pattern = "[P][1-2][.txt]",
+    recursive = T))
+
+# source_plates <- rbind(
+#   data.frame(filenames = list.files ("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\growthData\\20190828\\results", 
+#                                                    pattern = ".txt",
+#                                                    recursive = T)))
 
 source_plates$sourceid <- ifelse(grepl(pattern = "P1", source_plates$filenames), "1MSP001", "2MSP001")
 
+source_plates$batch <- ifelse(grepl(pattern = "20190513", source_plates$filenames), "batch_1", "batch_2")
+
 #import growth curves
 
-setwd("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\Mauro\\Cell_culture_data\\190310_Pre_screen_test_CPDdilution\\20190513\\results")
-
-
-fileNames <- list.files(full.names = F, pattern = ".txt")
+fileNames <- as.character(source_plates$filenames)
 
 data <- 
   
   lapply(fileNames, function(x) {
+    
+    #x = fileNames[1]
     
     df <-
       ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = x, Plate_size = 384, FileDirectory = getwd())
@@ -38,31 +52,75 @@ data <-
 names(data) <- fileNames
 
 
+#FIXME ACHN and M14 should have time - 24h, and then exclude the negative times
+
+data$`20190828/results/ACHN_CL3_P1.txt`$Time <- data$`20190828/results/ACHN_CL3_P1.txt`$Time -24
+
+data$`20190828/results/ACHN_CL3_P1.txt` <- subset(data$`20190828/results/ACHN_CL3_P1.txt`, Time >= 0)
+
+data$`20190828/results/ACHN_CL3_P2.txt`$Time <- data$`20190828/results/ACHN_CL3_P2.txt`$Time -24
+
+data$`20190828/results/ACHN_CL3_P2.txt` <- subset(data$`20190828/results/ACHN_CL3_P2.txt`, Time >= 0)
+
+data$`20190828/results/M14_CL2_P1.txt`$Time <- data$`20190828/results/M14_CL2_P1.txt`$Time -24
+
+data$`20190828/results/M14_CL2_P1.txt` <- subset(data$`20190828/results/M14_CL2_P1.txt`, Time >= 0)
+
+data$`20190828/results/M14_CL2_P2.txt`$Time <- data$`20190828/results/M14_CL2_P2.txt`$Time -24
+
+data$`20190828/results/M14_CL2_P2.txt` <- subset(data$`20190828/results/M14_CL2_P2.txt`, Time >= 0)
+
+
+####
+
+data$`20191029/results/EKVX_CL2_P1.txt`$Time <- data$`20191029/results/EKVX_CL2_P1.txt`$Time -24
+
+data$`20191029/results/EKVX_CL2_P1.txt` <- subset(data$`20191029/results/EKVX_CL2_P1.txt`, Time >= 0)
+
+data$`20191029/results/EKVX_CL2_P2.txt`$Time <- data$`20191029/results/EKVX_CL2_P2.txt`$Time -24
+
+data$`20191029/results/EKVX_CL2_P2.txt` <- subset(data$`20191029/results/EKVX_CL2_P2.txt`, Time >= 0)
+
+
+
 # correcting time for HCT-15: HCT-15 did not record some wells, so I am correcting for this
 
 data_corrected <- data
 
-data_corrected$HCT15_P1.txt$Time <- data_corrected$HCT15_P1.txt$Time +
-  (max(data_corrected$A549_P1.txt$Time) - max(data_corrected$HCT15_P1.txt$Time))
+data_corrected$`20190513/results/HCT15_P1.txt`$Time <- data_corrected$`20190513/results/HCT15_P1.txt`$Time +
+    (max(data_corrected$`20190513/results/A549_P1.txt`$Time) - max(data_corrected$`20190513/results/HCT15_P1.txt`$Time))
 
 
 # removing bad wells based on first 24h  growth
 
-store_HCT15 <- data_corrected$HCT15_P1.txt # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+skip_outlier <- c("20190513/results/HCT15_P1.txt", # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+                  "20190828/results/ACHN_CL3_P1.txt", # only 24h of growth
+                  "20190828/results/ACHN_CL3_P2.txt") # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+ 
+
+data_skip <- data_corrected[skip_outlier]
+
+data_corrected <- data_corrected[!(names(data_corrected) %in% skip_outlier)]
+
+tmp_names <- names(data_corrected)
 
 data_corrected <-
   
   lapply(names(data_corrected), FUN = function(x){
     
-    #x = "A549_P1.txt"
+    print(x)
     
-    plate_name = x
+    # plate_idx = names(data_corrected)[14]   #FIXME the name contains / which is not allowed as a finame.. use regex to only get the real plate name or remove the backslashed
+    
+    # x = names(data_corrected)[14]
+    
+    plate_name = strsplit(x, split = "/")[[1]][3]
     
     x = data_corrected[[x]]
     
     good_wells <-
       filter_growth_outliers(plate_name = plate_name, data = x, time_control = 24, save_diag_plots = T,
-                             save_plots_directory = "\\\\imsbnas.d.ethz.ch/sauer1/users/mauro/cell_culture_data/190310_pre_screen_test_cpddilution/figures")
+                             save_plots_directory = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/Mauro/cell_culture_data/190310_LargeScreen/figures")
     
     new_data <-
       x[!(x[,"Well"] %in% good_wells$wells_exception),]
@@ -75,11 +133,14 @@ data_corrected <-
     
   })
 
-names(data_corrected) <- fileNames
 
-data_corrected$HCT15_P1.txt <- store_HCT15  # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+names(data_corrected) <- tmp_names
 
-rm(store_HCT15)
+data_corrected <- append(data_corrected, data_skip)
+
+data_corrected <- data_corrected[fileNames]
+
+rm(data_skip, tmp_names)
 
 # Fit the confluence for each well, and return fitted confluence. Keep the same plate map structure.
 
@@ -90,6 +151,8 @@ base::lapply(names(data_corrected), function(plate_name){
   r.2.threshold = 0.8
   
   data_raw <- data_corrected[[plate_name]]
+  
+  plate_name <- strsplit(plate_name, split = "/")[[1]][3]
   
   fitted_data <- 
     
@@ -103,7 +166,7 @@ base::lapply(names(data_corrected), function(plate_name){
       
       max_scan_Time <- floor(max(data_well_raw$Time))
       
-      model_pred_poly <- get_growthMetrics(data_well_raw)[[3]]
+      model_pred_poly <- get_growthMetrics(data_well_raw, degree = 7)[[3]]
       
       time_sequence <- seq(min_scan_Time ,max_scan_Time,1)
       
@@ -123,7 +186,7 @@ base::lapply(names(data_corrected), function(plate_name){
   
   diagnostics_well <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[2]]) ) #for each plate, plot diagnostic plots with the R-squared.. check if any of fits have ploblems
   
-  save_plots_directory = "\\\\imsbnas.d.ethz.ch/sauer1/users/mauro/cell_culture_data/190310_pre_screen_test_cpddilution/figures"
+  save_plots_directory = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/Mauro/cell_culture_data/190310_LargeScreen/figures"
   
   filename = paste("fitting-QC", plate_name, gsub(" ", "_",as.character(Sys.time())), ".png", sep = "_")
   
@@ -156,12 +219,13 @@ names(data_corrected) <- fileNames
 
 source_layout <- # import source plate layout data
   
-  lapply(list.files("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\mauro\\cpd_data\\190508_msp_layout",
+  lapply(list.files("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\cpd_data\\large_screen_plate_layout",
                     pattern = "randomized",
-                    full.names = T),
+                    full.names = T,
+                    recursive = T),
          function(x) {
            
-           #x = "\\\\imsbnas.d.ethz.ch\\sauer1\\users\\mauro\\cpd_data\\190508_msp_layout/randomized_layout_2MSP.xls"
+           #x =  "\\\\imsbnas.d.ethz.ch\\sauer1\\users\\Mauro\\cpd_data\\large_screen_plate_layout/190806_NewMSP_Layout/randomized_layout_1MSP_batch2.xls"
            
            tmp_data  = readxl::read_xls(x)
            
@@ -178,27 +242,55 @@ data_corrected <-
     
     stopifnot(require(dplyr))
     
+    #x = "20190513/results/A549_P1.txt" 
+    
     tmp_data = data_corrected[[x]]
     
-    #x = "A549_P1.txt"
+    match_source <- source_plates[source_plates$filenames == x,c("sourceid", "batch")] 
     
-    match_source <- source_plates[source_plates$filenames == x,"sourceid"] 
-    
-    if(grepl(pattern = "1MSP", x = match_source)){
+    if(match_source$batch == "batch_1"){
       
-      tmp_data <- inner_join( tmp_data, source_layout[[1]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+      if(grepl(pattern = "1MSP", x = match_source$sourceid)){
+        
+        tmp_data <- inner_join( tmp_data, source_layout[[1]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+        
+        return(tmp_data)
+        
+      }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
+        
+        tmp_data <- inner_join(  tmp_data, source_layout[[2]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+        
+        return(tmp_data)
+        
+      }else{
+        
+        stop("some experimental plate could not be matched to a source plate layout.")
+        
+      }
       
+    } else if(match_source$batch == "batch_2"){
+      
+      if(grepl(pattern = "1MSP", x = match_source$sourceid)){
+        
+      tmp_data <- inner_join( tmp_data, source_layout[[3]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+        
       return(tmp_data)
-      
-    }else if(grepl(pattern = "2MSP", x =match_source)){
-      
-      tmp_data <- inner_join(  tmp_data, source_layout[[2]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-      
-      return(tmp_data)
+        
+      }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
+        
+        tmp_data <- inner_join(  tmp_data, source_layout[[4]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+        
+        return(tmp_data)
+        
+      }else{
+        
+        stop("some experimental plate could not be matched to a source plate layout.")
+        
+      }
       
     }else{
       
-      stop("some experimental plate could not be matched to a source plate layout.")
+      stop("some information is wrong with the match_source$source_id")
       
     }
     
@@ -224,7 +316,9 @@ data_corrected <-
     
     tmp_data[(tmp_data$Well %in% exception_wells), c("Final_conc_uM")] <- c(333)
     
-    tmp_data$cell<- strsplit(x, split = "_")[[1]][1]
+    tmp_data$cell<- strsplit(x, split = "/")[[1]][3]
+    
+    tmp_data$cell <- strsplit(tmp_data$cell, split = "_")[[1]][1]
     
     tmp_data$source_plate <- strsplit(x, split = "_")[[1]][2]
     
@@ -238,189 +332,12 @@ names(data_corrected) <- fileNames
 
 data_corrected <- do.call(rbind, data_corrected)
 
+data_corrected <- data_corrected[!(is.na(data_corrected$Final_conc_uM)), ]
+
 # removing DMSO that is not 33.3 and 3.33, as it causes many data analysis problems
 
-data_corrected <- subset(data_corrected, !(Drug == "DMSO" & Final_conc_uM != 333) )
+tmp_data_corrected <- data_corrected
 
-# plotting all data to check for inconsistencies
+data_corrected <- subset(data_corrected, !(Drug == "DMSO" & !(Final_conc_uM %in% c(333,367)))) #FIXME include DMSO that increased volume
 
-#$cc <- scales::seq_gradient_pal("lightblue", "red")(seq(0,1,length.out= length(unique(data_corrected$Final_conc_uM))))
-
-cc <- scales::seq_gradient_pal("lightblue", "red")(seq(0,1,length.out= 9))
-
-ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & cell == "NCIH460" & Drug %in% c("Chlormethine", "DMSO")),
-       aes(x = Time, y = Conf, color = factor(Final_conc_uM), group = factor(Final_conc_uM)))+
-  geom_smooth()+
-  scale_color_manual(values = cc)+
-  facet_wrap(~Drug+cell)
-
-data_corrected$Time <- round(data_corrected$Time,0)
-
-ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% c("DMSO")),
-       aes(x = Time, y = Conf, color = factor(Well), group = factor(Well)))+
-  geom_line()+
-  facet_grid(~cell) #FIXME When we plot DMSO by cell line, we have a few outliers. Remove these outliers.
-
-ggplot(subset(data_corrected, source_plate == "P1.txt" & Time <= 72 & Drug %in% c("Pemetrexed", "DMSO") & cell == "NCIH460"),
-       aes(x = Time, y = Conf, color = factor(Well), group = factor(Well)))+
-  geom_line()+
-  facet_wrap(~ Final_conc_uM) #FIXME When we plot one cell line, we have a few outliers. Remove these outliers.
-
-#TODO plot variation across replicates by well in the 384 well plate, hopefully only certain wells in the edge will have problems
-
-# maybe calculate intra replicate CV adn use ANOVA and check the variance by well, see if its consistant across CLs or if it
-#varies from CL to CL (plate to plate). Based on this, either exclude wells or 
-
-#TODO based on the plots above, create an outlier removal function that will remove the obvious outliers
-
-# https://www.r-bloggers.com/outlier-detection-and-treatment-with-r/
-# https://stepupanalytics.com/outlier-detection-techniques-using-r/ 
-
-# Calculate Metrics of Growth Inhibition --------------------------------
-# Calculate GI50, IC50, GRmetrics 50
-
-
-
-# GRmetrics ---------------------------------------------------------------
-
-
-# GR metrics, their example code only use the endpoint and time at treatment, but I will try all time points
-
-# we need to select time point zero as the time we treated the samples (as per their requirements)
-
-
-#time_treatment <- 24
-
-
-drugs_in_screen <- "17-AAG"  #c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO", NA, "Water", "WATER", "H2O", "Dmso", "Control", "Ctrl", "exception"))]))
-
-matrix()   # columns will be drugs, rows will be cell lines
-
-data_GRmetrics <- data_corrected
-
-cell_line <- "NCIH460"
-drug  <- "Docetaxel"
-time_treatment <- 24
-
-data_Grmetrics_Ttm <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # preparing the data for one drug
-data_Grmetrics_Ctr <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # getting the matching controls ready
-
-data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Drug %in% drugs_in_screen) #I chose clofarabine since it has a pretty dose response curve
-data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Drug == "DMSO" & Final_conc_uM == 333) # I separated the drug from the control, as its easier to parse
-
-# keep only matching time points
-
-match_time_intervals <- intersect(data_Grmetrics_Ctr$Time, data_Grmetrics_Ttm$Time) #make sure both datasets cover the same time
-
-time_treatment <- max(match_time_intervals[match_time_intervals < time_treatment])
-
-data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Time %in% match_time_intervals)
-data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Time %in% match_time_intervals)
-
-# Keeping certain constraints on time, so we are sure conf is not limiting (eg. >80)
-# also, GRmetrics require the time point at treatment, and not before. So zero will be time point slightly before treatment
-
-data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Time >= time_treatment & Time <= 72)
-data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Time >= time_treatment & Time <= 72)
-
-data_Grmetrics_Ctr$Time <- data_Grmetrics_Ctr %>% group_by(cell, Drug) %>% mutate(Time = ifelse(Time == min(Time), 0, Time)) %>% ungroup() %>% .$Time
-data_Grmetrics_Ttm$Time <- data_Grmetrics_Ttm %>% group_by(cell, Drug) %>% mutate(Time = ifelse(Time == min(Time), 0, Time)) %>% ungroup() %>% .$Time
-
-
-
-#data_Grmetrics_Ctr$Time <- ifelse(data_Grmetrics_Ctr$Time == min(data_Grmetrics_Ctr$Time), 0, data_Grmetrics_Ctr$Time) #FIXME for each cell line get a specific time, instead of general
-#data_Grmetrics_Ttm$Time <- ifelse(data_Grmetrics_Ttm$Time == min(data_Grmetrics_Ttm$Time), 0, data_Grmetrics_Ttm$Time)
-
-#TODO select only one time point, eg. 60h, and then calculate the GRmetric across this time point.. could be even 48h
-
-# Prepare data_Grmetrics_Ctr as example Case C
-
-data_Grmetrics_Ctr$time = data_Grmetrics_Ctr$Time
-
-data_Grmetrics_Ctr$cell_line <- (do.call(rbind, strsplit(x = rownames(data_Grmetrics_Ctr), "_")))[,1]
-
-data_Grmetrics_Ctr$agent = "-"
-
-data_Grmetrics_Ctr$concentration = 0
-
-data_Grmetrics_Ctr$cell_count <- data_Grmetrics_Ctr$Conf
-
-data_Grmetrics_Ctr <- data_Grmetrics_Ctr[,c("cell_line", "agent","time", "concentration", "cell_count")]
-
-rownames(data_Grmetrics_Ctr) <- NULL
-
-# Prepare data_Grmetrics_Ttm as example Case C
-
-head(data_Grmetrics_Ttm)
-
-data_Grmetrics_Ttm$time = data_Grmetrics_Ttm$Time
-
-data_Grmetrics_Ttm$cell_line <- (do.call(rbind, strsplit(x = rownames(data_Grmetrics_Ttm), "_")))[,1]
-
-data_Grmetrics_Ttm$agent <- (data_Grmetrics_Ttm$Drug)
-
-data_Grmetrics_Ttm$concentration = data_Grmetrics_Ttm$Final_conc_uM
-
-data_Grmetrics_Ttm$cell_count <- data_Grmetrics_Ttm$Conf
-
-data_Grmetrics_Ttm <- data_Grmetrics_Ttm[,c("cell_line", "agent","time", "concentration", "cell_count")]
-
-rownames(data_Grmetrics_Ttm) <- NULL
-
-# merge drug df and control df
-
-data_comb <- rbind(data_Grmetrics_Ctr, data_Grmetrics_Ttm)
-
-output1 = GRfit(inputData = data_comb, groupingVariables = 
-                  c("cell_line", 'agent', 'time'), case = "C")
-
-
-GRdrawDRC(output1, points =F)
-
-GRbox(output1, metric ='GR50', groupVariable = c('cell_line'), 
-      pointColor = c("agent"))
-
-GRbox(output1, metric ='GR50', groupVariable = c('agent'), 
-      pointColor = c("cell_line"))
-
-
-output2 <- GRmetrics::GRgetMetrics(output1)
-
-cc <- scales::seq_gradient_pal("blue", "red")(seq(0,1,length.out= 7))
-
-#cc <- grDevices::colorRampPalette(colors = c("blue", "red"))
-
-data_figure <- subset(data_corrected, Drug %in% c("DMSO",drugs_in_screen))
-
-data_figure <- data_figure[!(as.character(data_figure$Final_conc_uM) %in% c("33.3", "3.33")),]
-
-data_figure$Final_conc_uM <- ifelse(data_figure$Final_conc_uM == 333, 0, data_figure$Final_conc_uM)
-
-
-ggplot(subset(subset(data_figure, cell == "NCIH460"), Time > 24 & Time < 72 ) , aes(x = Time, y = Conf, color = factor(Final_conc_uM)))+
-  geom_smooth()+
-  facet_grid(~cell)+
-  scale_color_manual(values = cc)+
-  guides(color=guide_legend(title="Concentration (uM)"))
-
-
-plot(output2$time, output2$GR50, xlab = "Time (h)", ylab = "GR50", col = output2$cell_line)
-
-
-
-# # GR analysis w.r.t. time -----------------------------------------------
-
-
-# heatmap GR over time
-
-View(data_comb)
-
-output2$drug_cell <- paste(output2$agent, output2$cell_line, sep = "_") 
-
-output2$GR50 <- ifelse(output2$GR50 == Inf | output2$GR50 == -Inf, NA, output2$GR50)
-
-ggplot2::ggplot(subset(output2, agent == "17-AAG") ,aes(x = time, y = drug_cell, fill = (GR50))) + geom_tile()+
-  scale_fill_continuous(na.value = "white")+
-  theme(axis.text=element_text(size=20), legend.text = element_text(size = 20), legend.title=element_text(size=20), axis.title = element_text(size=20))
-
-
+rm(exceptions, source_layout, source_plates, tmp_data_corrected, fileNames, skip_outlier)
