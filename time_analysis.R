@@ -8,7 +8,9 @@ setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_d
 raw_data <- readxl::read_xlsx("Description.xlsx")
 
 
+#removing unwanted cell lines in the analysis
 
+raw_data <- raw_data[4:24,]
 
 # Preparing time vectors for 384 well plates ------------------------------
 
