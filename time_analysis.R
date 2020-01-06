@@ -321,10 +321,22 @@ if(plot == T){
   # Set relative size of marginal plots (main plot 10x bigger than marginals)
   (p <- ggMarginal(p, type="histogram", size=2))
   
-  ggsave(filename = "paperReady_384_incubation_times.png", plot = p, device = "png",
+  ggsave(filename = "paperReady_96_incubation_times.png", plot = p, device = "png",
          path = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures")
   
 }
+
+# converting CET/CEST to GMT
+
+CET_to_GMT <- function(time_vector){
+  format(time_vector, tz = "GMT", usetz = T)
+}
+
+time_data[,c(5:13)] <- CET_to_GMT(time_data[,c(5:13)])
+
+time_sampling_96p1 <- lapply(time_sampling_96p1, CET_to_GMT)
+
+time_sampling_96p2 <- lapply(time_sampling_96p2, CET_to_GMT)
 
 # organizing data for output ----------------------------------
 
