@@ -223,6 +223,9 @@ lapply(as.numeric(rownames(time_data)), function(row){
 
 time_diff_96 <- data.frame(sampling_p1= unlist(time_diff_96))
 
+
+names(time_sampling_96p1) <- time_data$cell_line
+
 ## plate 2
 
 lapply(rownames(time_data), function(row){
@@ -251,6 +254,8 @@ lapply(rownames(time_data), function(row){
   }
   
   
+
+  
 }) -> time_sampling_96p2
 
 unlist(lapply(as.numeric(rownames(time_data)), function(row){
@@ -277,6 +282,9 @@ unlist(lapply(as.numeric(rownames(time_data)), function(row){
   }
   
 })) -> time_diff_96$sampling_p2
+
+names(time_sampling_96p2) <- time_data$cell_line
+
 
 # plotting times 384 incubation times ----------------------------------------------------------
 
