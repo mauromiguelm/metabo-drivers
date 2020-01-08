@@ -38,7 +38,7 @@ source_plates$batch <- ifelse(grepl(pattern = "20190513", source_plates$filename
 
 fileNames <- as.character(source_plates$filenames)
 
-fileNames<- fileNames[7:length(fileNames)]
+fileNames<- fileNames[7:length(fileNames)] #remove CLs that do not have plate 2
 
 data <- 
   
@@ -58,10 +58,7 @@ data <-
 
 names(data) <- fileNames
 
-
-# remove cell lines that are not standard
-
-# Create elapsed times based on time_vectors for the 384 plates
+# Create elapsed times based on time_vectors for the 384 plates ####
 
 data <- lapply(names(data), function(filename){
   
@@ -124,46 +121,7 @@ data <- lapply(names(data), function(filename){
 
 names(data) <- fileNames
 
-# #FIXME ACHN and M14 should have time - 24h, and then exclude the negative times, since they were grown for 48h pre-ttm instead of 24h
-# 
-# data$`20190828/results/ACHN_CL3_P1.txt`$Time <- data$`20190828/results/ACHN_CL3_P1.txt`$Time -24
-# 
-# data$`20190828/results/ACHN_CL3_P1.txt` <- subset(data$`20190828/results/ACHN_CL3_P1.txt`, Time >= 0)
-# 
-# data$`20190828/results/ACHN_CL3_P2.txt`$Time <- data$`20190828/results/ACHN_CL3_P2.txt`$Time -24
-# 
-# data$`20190828/results/ACHN_CL3_P2.txt` <- subset(data$`20190828/results/ACHN_CL3_P2.txt`, Time >= 0)
-# 
-# data$`20190828/results/M14_CL2_P1.txt`$Time <- data$`20190828/results/M14_CL2_P1.txt`$Time -24
-# 
-# data$`20190828/results/M14_CL2_P1.txt` <- subset(data$`20190828/results/M14_CL2_P1.txt`, Time >= 0)
-# 
-# data$`20190828/results/M14_CL2_P2.txt`$Time <- data$`20190828/results/M14_CL2_P2.txt`$Time -24
-# 
-# data$`20190828/results/M14_CL2_P2.txt` <- subset(data$`20190828/results/M14_CL2_P2.txt`, Time >= 0)
-# 
-# 
-# ####
-# 
-# data$`20191029/results/EKVX_CL2_P1.txt`$Time <- data$`20191029/results/EKVX_CL2_P1.txt`$Time -24
-# 
-# data$`20191029/results/EKVX_CL2_P1.txt` <- subset(data$`20191029/results/EKVX_CL2_P1.txt`, Time >= 0)
-# 
-# data$`20191029/results/EKVX_CL2_P2.txt`$Time <- data$`20191029/results/EKVX_CL2_P2.txt`$Time -24
-# 
-# data$`20191029/results/EKVX_CL2_P2.txt` <- subset(data$`20191029/results/EKVX_CL2_P2.txt`, Time >= 0)
-
-# 
-# 
-# # correcting time for HCT-15: HCT-15 did not record some wells, so I am correcting for this
-# 
-# data_corrected <- data
-# 
-# data_corrected$`20190513/results/HCT15_P1.txt`$Time <- data_corrected$`20190513/results/HCT15_P1.txt`$Time +
-#     (max(data_corrected$`20190513/results/A549_P1.txt`$Time) - max(data_corrected$`20190513/results/HCT15_P1.txt`$Time))
-
-
-# removing bad wells based on first 24h  growth
+# removing bad wells based on growth before treatment #####
 
 data_corrected <- data
 
@@ -216,7 +174,7 @@ data_corrected <- data_corrected[fileNames]
 
 rm(data_skip, tmp_names)
 
-# Fit the confluence for each well, and return fitted confluence. Keep the same plate map structure.
+# Fit the confluence for each well, and return fitted confluence. Keep the same plate map structure. ####
 
 base::lapply(names(data_corrected), function(plate_name){
   
@@ -288,7 +246,7 @@ base::lapply(names(data_corrected), function(plate_name){
 
 names(data_corrected) <- fileNames
 
-# combining metadata of source.plates into growth_data
+# combining metadata of source.plates into growth_data ######
 
 
 source_layout <- # import source plate layout data
@@ -410,8 +368,8 @@ data_corrected <- data_corrected[!(is.na(data_corrected$Final_conc_uM)), ]
 
 # removing DMSO that is not 33.3 and 3.33, as it causes many data analysis problems
 
-tmp_data_corrected <- data_corrected
+#tmp_data_corrected <- data_corrected
 
 data_corrected <- subset(data_corrected, !(Drug == "DMSO" & !(Final_conc_uM %in% c(333,367)))) #FIXME include DMSO that increased volume
 
-rm(exceptions, source_layout, source_plates, tmp_data_corrected, fileNames, skip_outlier)
+rm(exceptions, source_layout, source_plates, fileNames, skip_outlier)
