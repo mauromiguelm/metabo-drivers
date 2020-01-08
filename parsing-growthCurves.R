@@ -1,6 +1,10 @@
 
 library(ggplot2); library(RColorBrewer)
 
+# Importing plate times
+
+source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\analysis\\time_analysis.R")
+
 # import functions
 
 source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\CellCultureAnalysis.R")
@@ -34,16 +38,19 @@ source_plates$batch <- ifelse(grepl(pattern = "20190513", source_plates$filename
 
 fileNames <- as.character(source_plates$filenames)
 
+fileNames<- fileNames[7:length(fileNames)]
+
 data <- 
   
   lapply(fileNames, function(x) {
     
-    #x = fileNames[1]
+    #x = fileNames[10]
     
     df <-
-      ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = x, Plate_size = 384, FileDirectory = getwd())
+      ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = x,
+                       Plate_size = 384, FileDirectory = getwd(),
+                       time_output = "GMT")
     
-    df$Time <- as.numeric(df$Time)
     
     return(df)
     
@@ -52,46 +59,113 @@ data <-
 names(data) <- fileNames
 
 
-#FIXME ACHN and M14 should have time - 24h, and then exclude the negative times
+# remove cell lines that are not standard
 
-data$`20190828/results/ACHN_CL3_P1.txt`$Time <- data$`20190828/results/ACHN_CL3_P1.txt`$Time -24
+# Create elapsed times based on time_vectors for the 384 plates
 
-data$`20190828/results/ACHN_CL3_P1.txt` <- subset(data$`20190828/results/ACHN_CL3_P1.txt`, Time >= 0)
+data <- lapply(names(data), function(filename){
+  
+  #filename <- names(data)[13]
+  
+  start_str <- "results/"
+  
+  start_length <- nchar(start_str)
+  
+  start_pos <- regexpr(start_str, text = filename)[[1]][1] + start_length
+  
+  end_str <- ".txt" 
+    
+  end_pos <- regexpr(end_str, text = filename)[[1]][1] - 1
+  
+  cell_plate <- substr(filename, start_pos, end_pos)   
+    
+  cell_line <- strsplit(cell_plate, "_")[[1]][1]  
+  
+  plate <- strsplit(cell_plate, "_")[[1]][3]
+  
+  p1_treatment_end <-  time_vectors$plate384[time_vectors$plate384$cell_line == cell_line,
+                                             "time_treatment_96p1_end"]
+  
+  p2_treatment_end <- time_vectors$plate384[time_vectors$plate384$cell_line == cell_line,
+                                            "time_treatment_96p2_end"]
+  
+  
+  if(plate == "P1"){
+    
+    data_elapsed <- data[[filename]]
+    
+    data_elapsed$Time <- difftime(data_elapsed$Time, 
+             as.POSIXct(as.character(p1_treatment_end), tz = "GMT"), units = "h")
+     
+    
+    data_elapsed$Time <- round(data_elapsed$Time,digits = 2)
+  
+    data_elapsed$Time <- as.numeric(data_elapsed$Time)
+    
+  }else if(plate == "P2"){
+    
+    data_elapsed <- data[[filename]]
+    
+    data_elapsed$Time <- difftime(data_elapsed$Time, 
+                                  as.POSIXct(as.character(p2_treatment_end), tz = "GMT"), units = "h")
+    
+    
+    data_elapsed$Time <- round(data_elapsed$Time,digits = 2)
+    
+    data_elapsed$Time <- as.numeric(data_elapsed$Time)
+    
+  }else(
+    stop("problems with regex while parsing plate times")
+  )
+  
+  return(data_elapsed)
+  
+  })
 
-data$`20190828/results/ACHN_CL3_P2.txt`$Time <- data$`20190828/results/ACHN_CL3_P2.txt`$Time -24
+names(data) <- fileNames
 
-data$`20190828/results/ACHN_CL3_P2.txt` <- subset(data$`20190828/results/ACHN_CL3_P2.txt`, Time >= 0)
+# #FIXME ACHN and M14 should have time - 24h, and then exclude the negative times, since they were grown for 48h pre-ttm instead of 24h
+# 
+# data$`20190828/results/ACHN_CL3_P1.txt`$Time <- data$`20190828/results/ACHN_CL3_P1.txt`$Time -24
+# 
+# data$`20190828/results/ACHN_CL3_P1.txt` <- subset(data$`20190828/results/ACHN_CL3_P1.txt`, Time >= 0)
+# 
+# data$`20190828/results/ACHN_CL3_P2.txt`$Time <- data$`20190828/results/ACHN_CL3_P2.txt`$Time -24
+# 
+# data$`20190828/results/ACHN_CL3_P2.txt` <- subset(data$`20190828/results/ACHN_CL3_P2.txt`, Time >= 0)
+# 
+# data$`20190828/results/M14_CL2_P1.txt`$Time <- data$`20190828/results/M14_CL2_P1.txt`$Time -24
+# 
+# data$`20190828/results/M14_CL2_P1.txt` <- subset(data$`20190828/results/M14_CL2_P1.txt`, Time >= 0)
+# 
+# data$`20190828/results/M14_CL2_P2.txt`$Time <- data$`20190828/results/M14_CL2_P2.txt`$Time -24
+# 
+# data$`20190828/results/M14_CL2_P2.txt` <- subset(data$`20190828/results/M14_CL2_P2.txt`, Time >= 0)
+# 
+# 
+# ####
+# 
+# data$`20191029/results/EKVX_CL2_P1.txt`$Time <- data$`20191029/results/EKVX_CL2_P1.txt`$Time -24
+# 
+# data$`20191029/results/EKVX_CL2_P1.txt` <- subset(data$`20191029/results/EKVX_CL2_P1.txt`, Time >= 0)
+# 
+# data$`20191029/results/EKVX_CL2_P2.txt`$Time <- data$`20191029/results/EKVX_CL2_P2.txt`$Time -24
+# 
+# data$`20191029/results/EKVX_CL2_P2.txt` <- subset(data$`20191029/results/EKVX_CL2_P2.txt`, Time >= 0)
 
-data$`20190828/results/M14_CL2_P1.txt`$Time <- data$`20190828/results/M14_CL2_P1.txt`$Time -24
-
-data$`20190828/results/M14_CL2_P1.txt` <- subset(data$`20190828/results/M14_CL2_P1.txt`, Time >= 0)
-
-data$`20190828/results/M14_CL2_P2.txt`$Time <- data$`20190828/results/M14_CL2_P2.txt`$Time -24
-
-data$`20190828/results/M14_CL2_P2.txt` <- subset(data$`20190828/results/M14_CL2_P2.txt`, Time >= 0)
-
-
-####
-
-data$`20191029/results/EKVX_CL2_P1.txt`$Time <- data$`20191029/results/EKVX_CL2_P1.txt`$Time -24
-
-data$`20191029/results/EKVX_CL2_P1.txt` <- subset(data$`20191029/results/EKVX_CL2_P1.txt`, Time >= 0)
-
-data$`20191029/results/EKVX_CL2_P2.txt`$Time <- data$`20191029/results/EKVX_CL2_P2.txt`$Time -24
-
-data$`20191029/results/EKVX_CL2_P2.txt` <- subset(data$`20191029/results/EKVX_CL2_P2.txt`, Time >= 0)
-
-
-
-# correcting time for HCT-15: HCT-15 did not record some wells, so I am correcting for this
-
-data_corrected <- data
-
-data_corrected$`20190513/results/HCT15_P1.txt`$Time <- data_corrected$`20190513/results/HCT15_P1.txt`$Time +
-    (max(data_corrected$`20190513/results/A549_P1.txt`$Time) - max(data_corrected$`20190513/results/HCT15_P1.txt`$Time))
+# 
+# 
+# # correcting time for HCT-15: HCT-15 did not record some wells, so I am correcting for this
+# 
+# data_corrected <- data
+# 
+# data_corrected$`20190513/results/HCT15_P1.txt`$Time <- data_corrected$`20190513/results/HCT15_P1.txt`$Time +
+#     (max(data_corrected$`20190513/results/A549_P1.txt`$Time) - max(data_corrected$`20190513/results/HCT15_P1.txt`$Time))
 
 
 # removing bad wells based on first 24h  growth
+
+data_corrected <- data
 
 skip_outlier <- c("20190513/results/HCT15_P1.txt", # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
                   "20190828/results/ACHN_CL3_P1.txt", # only 24h of growth
@@ -112,14 +186,14 @@ data_corrected <-
     
     # plate_idx = names(data_corrected)[14]   #FIXME the name contains / which is not allowed as a finame.. use regex to only get the real plate name or remove the backslashed
     
-    # x = names(data_corrected)[14]
+    # x = "20190925/results/SF539_CL1_P2.txt"
     
     plate_name = strsplit(x, split = "/")[[1]][3]
     
     x = data_corrected[[x]]
     
     good_wells <-
-      filter_growth_outliers(plate_name = plate_name, data = x, time_control = 24, save_diag_plots = T,
+      filter_growth_outliers(plate_name = plate_name, data = x, time_control = 0, save_diag_plots = T,
                              save_plots_directory = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/Mauro/cell_culture_data/190310_LargeScreen/figures")
     
     new_data <-
