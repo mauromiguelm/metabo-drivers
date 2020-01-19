@@ -1,21 +1,26 @@
+## import R functions ####
 
 library(ggplot2); library(RColorBrewer)
 
-# Importing plate times
+# Importing plate times ####
 
 source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\analysis\\time_analysis.R")
 
-# import functions
+# import functions cell culture #####
 
 source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\CellCultureAnalysis.R")
 
 source("C:\\Users\\masierom\\polybox\\Programing\\Project_exometabolites\\modelling_growth_curves.R")
 
-# Importing exceptions
+#import plate 96-384 converter #####
+
+source('C:/Users/masierom/polybox/Programing/96_to_384/Convert_96_to_384.R')
+
+# Importing exceptions ####
 
 source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\exceptions\\log_processing.r")
 
-## Importing source plates
+## Importing source plates #####
 
 setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\growthData")
 
@@ -34,7 +39,7 @@ source_plates$sourceid <- ifelse(grepl(pattern = "P1", source_plates$filenames),
 
 source_plates$batch <- ifelse(grepl(pattern = "20190513", source_plates$filenames), "batch_1", "batch_2")
 
-#import growth curves
+#import growth curves ####
 
 fileNames <- as.character(source_plates$filenames)
 
@@ -58,11 +63,19 @@ data <-
 
 names(data) <- fileNames
 
-# Create elapsed times based on time_vectors for the 384 plates ####
+#### load data ####
+
+#load("C:/Users/mauro/Desktop/20200113_envir.2.RData")
+
+### Create elapsed and sampling times based on time_vectors for the 384 plates ######
 
 data <- lapply(names(data), function(filename){
   
   #filename <- names(data)[13]
+  
+  # filename = "20191029/results/OVCAR4_CL3_P1.txt"
+  
+  print(filename)
   
   start_str <- "results/"
   
@@ -71,11 +84,11 @@ data <- lapply(names(data), function(filename){
   start_pos <- regexpr(start_str, text = filename)[[1]][1] + start_length
   
   end_str <- ".txt" 
-    
+  
   end_pos <- regexpr(end_str, text = filename)[[1]][1] - 1
   
   cell_plate <- substr(filename, start_pos, end_pos)   
-    
+  
   cell_line <- strsplit(cell_plate, "_")[[1]][1]  
   
   plate <- strsplit(cell_plate, "_")[[1]][3]
@@ -91,21 +104,59 @@ data <- lapply(names(data), function(filename){
     
     data_elapsed <- data[[filename]]
     
-    data_elapsed$Time <- difftime(data_elapsed$Time, 
-             as.POSIXct(as.character(p1_treatment_end), tz = "GMT"), units = "h")
-     
+    # for each plate, calculate the time in which it was sampled
+    
+    data_elapsed <- conv_384_96(data_elapsed) #get which 384 wells belong to each 96 quadrant
+    
+    #cell_line = "HCT15"
+    
+    quad_time_keys <-  time_vectors$samp_p1_96[[cell_line]]
+    
+    if(is.null(quad_time_keys)) stop("cannot find matching time for CL")
+    
+    samp_time <- quad_time_keys[data_elapsed$quart]
+    
+    samp_time_diff <- difftime(samp_time, 
+                               as.POSIXct(as.character(p1_treatment_end), tz = "GMT"), units = "h")
+    
+    samp_time_diff <- round(as.numeric(samp_time_diff),2)
+    
+    data_elapsed$samp_time <- samp_time_diff
+    
+    # for each plate, create elapse time 
+    
+    data_elapsed$Time <- difftime(as.POSIXct(data_elapsed$Time, tz = "GMT"), 
+                                  as.POSIXct(as.character(p1_treatment_end), tz = "GMT"), units = "h")
     
     data_elapsed$Time <- round(data_elapsed$Time,digits = 2)
-  
+    
     data_elapsed$Time <- as.numeric(data_elapsed$Time)
     
   }else if(plate == "P2"){
     
     data_elapsed <- data[[filename]]
     
-    data_elapsed$Time <- difftime(data_elapsed$Time, 
-                                  as.POSIXct(as.character(p2_treatment_end), tz = "GMT"), units = "h")
+    # for each plate, calculate the time in which it was sampled
     
+    data_elapsed <- conv_384_96(data_elapsed) #get which 384 wells belong to each 96 quadrant
+    
+    #cell_line = "HCT15"
+    
+    quad_time_keys <-  time_vectors$samp_p2_96[[cell_line]]
+    
+    if(is.null(quad_time_keys)) stop("cannot find matching time for CL")
+    
+    samp_time <- quad_time_keys[data_elapsed$quart]
+    
+    samp_time_diff <- difftime(samp_time, 
+                               as.POSIXct(as.character(p2_treatment_end), tz = "GMT"), units = "h")
+    
+    samp_time_diff <- round(as.numeric(samp_time_diff),2)
+    
+    data_elapsed$samp_time <- samp_time_diff
+    
+    data_elapsed$Time <- difftime(as.POSIXct(data_elapsed$Time, tz = "GMT"), 
+                                  as.POSIXct(as.character(p2_treatment_end), tz = "GMT"), units = "h")
     
     data_elapsed$Time <- round(data_elapsed$Time,digits = 2)
     
@@ -117,7 +168,7 @@ data <- lapply(names(data), function(filename){
   
   return(data_elapsed)
   
-  })
+})
 
 names(data) <- fileNames
 
@@ -128,7 +179,7 @@ data_corrected <- data
 skip_outlier <- c("20190513/results/HCT15_P1.txt", # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
                   "20190828/results/ACHN_CL3_P1.txt", # only 24h of growth
                   "20190828/results/ACHN_CL3_P2.txt") # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
- 
+
 
 data_skip <- data_corrected[skip_outlier]
 
@@ -144,14 +195,14 @@ data_corrected <-
     
     # plate_idx = names(data_corrected)[14]   #FIXME the name contains / which is not allowed as a finame.. use regex to only get the real plate name or remove the backslashed
     
-    # x = "20190925/results/SF539_CL1_P2.txt"
+    #x = "20190925/results/SF539_CL1_P2.txt"
     
     plate_name = strsplit(x, split = "/")[[1]][3]
     
     x = data_corrected[[x]]
     
     good_wells <-
-      filter_growth_outliers(plate_name = plate_name, data = x, time_control = 0, save_diag_plots = T,
+      filter_growth_outliers(plate_name = plate_name, data = x, time_control = 0, save_diag_plots = F,
                              save_plots_directory = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/Mauro/cell_culture_data/190310_LargeScreen/figures")
     
     new_data <-
@@ -168,6 +219,10 @@ data_corrected <-
 
 names(data_corrected) <- tmp_names
 
+lapply(data_skip, function(plate){
+  if(is.null(plate)){warning("the plate is null")}
+})
+
 data_corrected <- append(data_corrected, data_skip)
 
 data_corrected <- data_corrected[fileNames]
@@ -176,9 +231,18 @@ rm(data_skip, tmp_names)
 
 # Fit the confluence for each well, and return fitted confluence. Keep the same plate map structure. ####
 
+
+#FIXME the functin below has to retunr all columns.. some are mising
+
+# tmp <- data_corrected
+# 
+# data_corrected <- tmp
+
 base::lapply(names(data_corrected), function(plate_name){
   
-  #plate_name =  names(data_corrected)[3] #FIXME delete me
+  #plate_name =  names(data_corrected)[5] #FIXME delete me
+  
+  print(plate_name)
   
   r.2.threshold = 0.8
   
@@ -186,11 +250,21 @@ base::lapply(names(data_corrected), function(plate_name){
   
   plate_name <- strsplit(plate_name, split = "/")[[1]][3]
   
+  grouping_vars <- "Well"
+  
+  metadata_cols <- colnames(data_raw)[!colnames(data_raw) %in% c("Time", "Conf")]
+  
+  metadata_df <- data_raw[,metadata_cols]
+  
+  metadata_df <- metadata_df %>% group_by(get(grouping_vars)) %>% slice(1) %>% ungroup()
+  
+  metadata_df[ncol(metadata_df)] <- NULL
+  
   fitted_data <- 
     
     lapply(unique(data_raw$Well), function(idx_well){
       
-      #idx_well <- unique(data_raw$Well)[2] #FIXME delete me 
+      #idx_well <- unique(data_raw$Well)[5] #FIXME delete me 
       
       data_well_raw <- subset(data_raw[,c("Time", "Conf", "Well")], Well == idx_well)
       
@@ -216,11 +290,11 @@ base::lapply(names(data_corrected), function(plate_name){
   
   # save diagnostic plots
   
-  diagnostics_well <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[2]]) ) #for each plate, plot diagnostic plots with the R-squared.. check if any of fits have ploblems
+  diagnostics_well <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[2]]) ) #for each plate, plot diagnostic plots with the r-squared.. check if any of fits have ploblems
   
-  save_plots_directory = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/Mauro/cell_culture_data/190310_LargeScreen/figures"
+  save_plots_directory = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/mauro/cell_culture_data/190310_largescreen/figures"
   
-  filename = paste("fitting-QC", plate_name, gsub(" ", "_",as.character(Sys.time())), ".png", sep = "_")
+  filename = paste("fitting-qc", plate_name, gsub(" ", "_",as.character(Sys.time())), ".png", sep = "_")
   
   filename = gsub(pattern = ":", replacement = "_", x = filename)
   
@@ -230,7 +304,7 @@ base::lapply(names(data_corrected), function(plate_name){
   
   png(filename = paste(save_plots_directory, filename , sep = "/"))
   fig <- hist(diagnostics_well$adj.r.2, main = plate_name)
-  text( paste0("Adj.r.2 < 0.8 = ", length(bad_wells)) , x = fig$breaks[3], y = max(fig$counts))
+  text( paste0("adj.r.2 < 0.8 = ", length(bad_wells)) , x = fig$breaks[3], y = max(fig$counts))
   dev.off()
   
   # return a df with the right columns
@@ -239,15 +313,15 @@ base::lapply(names(data_corrected), function(plate_name){
   
   pred_conf <- subset(pred_conf, !(Well %in% bad_wells))
   
+  pred_conf <- inner_join(pred_conf, metadata_df, by = grouping_vars)
+  
   return(pred_conf)
   
 }) -> data_corrected
 
-
 names(data_corrected) <- fileNames
 
 # combining metadata of source.plates into growth_data ######
-
 
 source_layout <- # import source plate layout data
   
@@ -267,14 +341,13 @@ source_layout <- # import source plate layout data
            
          })
 
-
 data_corrected <-
   
   lapply(names(data_corrected), function(x){
     
     stopifnot(require(dplyr))
     
-    #x = "20190513/results/A549_P1.txt" 
+    #x = names(data_corrected)[1] 
     
     tmp_data = data_corrected[[x]]
     
@@ -284,13 +357,13 @@ data_corrected <-
       
       if(grepl(pattern = "1MSP", x = match_source$sourceid)){
         
-        tmp_data <- inner_join( tmp_data, source_layout[[1]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+        tmp_data <- inner_join(tmp_data, source_layout[[1]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
         
         return(tmp_data)
         
       }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
         
-        tmp_data <- inner_join(  tmp_data, source_layout[[2]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+        tmp_data <- inner_join(tmp_data, source_layout[[2]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
         
         return(tmp_data)
         
@@ -304,9 +377,9 @@ data_corrected <-
       
       if(grepl(pattern = "1MSP", x = match_source$sourceid)){
         
-      tmp_data <- inner_join( tmp_data, source_layout[[3]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+        tmp_data <- inner_join( tmp_data, source_layout[[3]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
         
-      return(tmp_data)
+        return(tmp_data)
         
       }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
         
@@ -330,13 +403,14 @@ data_corrected <-
 
 names(data_corrected) <- fileNames
 
-# relabelling bad wells based on Echo transfer. I can relabel those with medium, to increase the number of controls
+# relabelling bad wells based on Echo transfer. #########
+# In future I can relabel those with medium, to increase the number of controls, today as exception
 
 data_corrected <-
   
   lapply(names(data_corrected), function(x){
     
-    #x = "A549_P1.txt"
+    #x = "20191029/results/OVCAR4_CL3_P2.txt"
     
     source_id <- unlist(subset(source_plates, filenames == x, sourceid))
     
@@ -352,7 +426,9 @@ data_corrected <-
     
     tmp_data$cell <- strsplit(tmp_data$cell, split = "_")[[1]][1]
     
-    tmp_data$source_plate <- strsplit(x, split = "_")[[1]][2]
+    tmp <- strsplit(x, split = "_")[[1]][3]
+    
+    tmp_data$source_plate <- strsplit(tmp, split = ".", fixed = T)[[1]][1]
     
     return(tmp_data)
     
@@ -360,16 +436,13 @@ data_corrected <-
 
 names(data_corrected) <- fileNames
 
-# checking if exceptions show the same behavious as PBS or DMSO
-
 data_corrected <- do.call(rbind, data_corrected)
 
 data_corrected <- data_corrected[!(is.na(data_corrected$Final_conc_uM)), ]
 
-# removing DMSO that is not 33.3 and 3.33, as it causes many data analysis problems
-
-#tmp_data_corrected <- data_corrected
+# removing DMSO that is not 33.3 and 3.33, as it causes many data analysis problems ######
 
 data_corrected <- subset(data_corrected, !(Drug == "DMSO" & !(Final_conc_uM %in% c(333,367)))) #FIXME include DMSO that increased volume
 
-rm(exceptions, source_layout, source_plates, fileNames, skip_outlier)
+rm(list = ls()[!ls()=="data_corrected"])
+
