@@ -1,16 +1,16 @@
-#source data
+## This code takes a vector of growth and calculate GI50, the initial parsing of the data is the same as in the GRmetrics packege,
+#  so it will be easier to incorporate later.
 
-library(GRmetrics); library(dplyr); library(tidyr)
 
-source("\\\\d.ethz.ch/groups/biol/sysbc/sauer_1/users/Mauro/Cell_culture_data/190310_LargeScreen/analysis/parsing-growthCurves.R")
+load("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data\\growth_curves.RData")
 
-# GRmetrics ---------------------------------------------------------------
-
+library(dplyr); library(tidyr); library(ggplot2)
 
 # GR metrics, their example code only use the endpoint and time at treatment, but I will try all time points
 
 # we need to select time point zero as the time we treated the samples (as per their requirements)
 
+devtools::load_all("C:\\Mauro_r_library\\tdsR")
 
 time_treatment <- 24
 
@@ -42,13 +42,8 @@ data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Time %in% match_time_intervals)
 # Keeping certain constraints on time, so we are sure conf is not limiting (eg. >80)
 # also, GRmetrics require the time point at treatment, and not before. So zero will be time point slightly before treatment
 
-data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Time >= time_treatment & Time == 72 | Time == 24)
-data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Time >= time_treatment & Time == 72 | Time == 24)
-
-data_Grmetrics_Ctr$Time <- data_Grmetrics_Ctr %>% group_by(cell, Drug) %>% mutate(Time = ifelse(Time == min(Time), 0, Time)) %>% ungroup() %>% .$Time
-data_Grmetrics_Ttm$Time <- data_Grmetrics_Ttm %>% group_by(cell, Drug) %>% mutate(Time = ifelse(Time == min(Time), 0, Time)) %>% ungroup() %>% .$Time
-
-
+#FIXME data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Time > 0)
+#FIXME data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Time > 0)
 
 #data_Grmetrics_Ctr$Time <- ifelse(data_Grmetrics_Ctr$Time == min(data_Grmetrics_Ctr$Time), 0, data_Grmetrics_Ctr$Time) #FIXME for each cell line get a specific time, instead of general
 #data_Grmetrics_Ttm$Time <- ifelse(data_Grmetrics_Ttm$Time == min(data_Grmetrics_Ttm$Time), 0, data_Grmetrics_Ttm$Time)
@@ -113,82 +108,13 @@ rownames(data_Grmetrics_Ttm) <- NULL
 
 data_comb <- rbind(data_Grmetrics_Ctr, data_Grmetrics_Ttm)
 
-data_comb <-subset(data_comb, cell_line =="HT29" & agent %in% c("-", "Chlormethine", "BPTES"))
+#data_comb <-subset(data_comb, cell_line =="HT29" & agent %in% }("-", "Chlormethine", "BPTES"))
 
 data_comb$cell_line <- as.character(data_comb$cell_line)
 
-output1 = GRfit(inputData = data_comb, groupingVariables = c("cell_line", 'agent'), case = "C")
+test <- subset(data_comb, cell_line == "ACHN")
 
-GRdrawDRC(output1, points =F)
+test <- subset(test, agent == "Gemcitabine" | agent == "ACHN")
 
-GRbox(output1, metric ='GR50', groupVariable = c('cell_line'), 
-      pointColor = c("agent"))
-
-GRbox(output1, metric ='GR50', groupVariable = c('agent'), 
-      pointColor = c("cell_line"))
-
-output2 <- GRmetrics::GRgetMetrics(output1)
-
-cc <- scales::seq_gradient_pal("blue", "red")(seq(0,1,length.out= 18))
-
-# run tdsR on dataset, and compare with 
-
-### ### CONTINUE HERE ### ### 
-### ### CONTINUE HERE ### ### 
-### ### CONTINUE HERE ### ### 
-### ### CONTINUE HERE ### ### 
-### ### CONTINUE HERE ### ### 
-
-#FIXME sometimes the fit return a p-value instead of NA, include p-value in the control flow
-
-tdsR_fit(inputData = data_comb, groupingVariables = c("cell_line", "agent", "time"))
-
-#cc <- grDevices::colorRampPalette(colors = c("blue", "red"))
-
-data_figure <- subset(data_corrected, Drug %in% c("DMSO",drugs_in_screen))
-
-data_figure <- data_figure[!(as.character(data_figure$Final_conc_uM) %in% c("33.3", "3.33")),]
-
-data_figure$Final_conc_uM <- ifelse(data_figure$Final_conc_uM == 333, 0, data_figure$Final_conc_uM)
-
-
-ggplot(subset(subset(data_figure, cell == "NCIH460"), Time > 24 & Time < 72 ) , aes(x = Time, y = Conf, color = factor(Final_conc_uM)))+
-  geom_smooth()+
-  facet_grid(~cell)+
-  scale_color_manual(values = cc)+
-  guides(color=guide_legend(title="Concentration (uM)"))
-
-
-plot(output2$time, output2$GR50, xlab = "Time (h)", ylab = "GR50", col = output2$cell_line)
-
-
-
-# # GR analysis w.r.t. time -----------------------------------------------
-
-
-# heatmap GR over time
-
-output2$drug_cell <- paste(output2$agent, output2$cell_line, sep = "_") 
-
-output2$GR50 <- ifelse(output2$GR50 == Inf | output2$GR50 == -Inf, NA, output2$GR50)
-
-output2_matrix <- output2
-
-output2_matrix <- output2_matrix[,c(1,2,9)]
-
-output2_matrix <- spread(output2_matrix, key = "agent", value = "GR50")
-
-rownames(output2_matrix) <- output2_matrix[,1]
-
-output2_matrix[,1] <- NULL
-
-output2_matrix <- output2_matrix[,colSums(is.na(output2_matrix))<nrow(output2_matrix)]
-
-library(gplots)
-
-(as.matrix(output2_matrix))
-
-ggplot2::ggplot(output2 ,aes(x = agent, y = cell_line, fill = log(GR50))) + geom_tile()+
-  scale_fill_continuous(na.value = "grey")+
-  theme(axis.text.x= element_text(angle = 90))
+tdsR_fit(test, groupingVariables = c("cell_line", "agent"))
 

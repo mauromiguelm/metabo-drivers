@@ -39,6 +39,36 @@ source_plates$sourceid <- ifelse(grepl(pattern = "P1", source_plates$filenames),
 
 source_plates$batch <- ifelse(grepl(pattern = "20190513", source_plates$filenames), "batch_1", "batch_2")
 
+setwd("..")
+
+tmp <- read.xlsx("Description.xlsx")
+
+source_plates$uniqueID <- NA
+
+cell <- strsplit(x = as.character(source_plates$filenames), split = "/")
+
+cell <- lapply(cell, "[[", 3)
+
+cell <- strsplit(x = unlist(cell), split = "_")
+
+plate <- unlist(lapply(cell, "[", 3))
+
+cell <- unlist(lapply(cell, "[[", 1))
+
+tmp <- tmp[match(x = cell, table = tmp$cell_name), ]
+
+msp1 <- grepl(pattern = "1MSP", x = source_plates$sourceid)
+
+source_plates$uniqueID[msp1] <- tmp$source1[msp1]
+
+msp2 <- grepl(pattern = "2MSP", x = source_plates$sourceid)
+
+source_plates$uniqueID[msp2] <- tmp$source2[msp2]
+
+rm(tmp, msp1, msp2)
+
+setwd("./growthData")
+
 #import growth curves ####
 
 fileNames <- as.character(source_plates$filenames)
@@ -176,7 +206,7 @@ names(data) <- fileNames
 
 data_corrected <- data
 
-skip_outlier <- c("20190513/results/HCT15_P1.txt", # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+skip_outlier <- c(#"20190513/results/HCT15_P1.txt", # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
                   "20190828/results/ACHN_CL3_P1.txt", # only 24h of growth
                   "20190828/results/ACHN_CL3_P2.txt") # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
 
@@ -231,16 +261,9 @@ rm(data_skip, tmp_names)
 
 # Fit the confluence for each well, and return fitted confluence. Keep the same plate map structure. ####
 
-
-#FIXME the functin below has to retunr all columns.. some are mising
-
-# tmp <- data_corrected
-# 
-# data_corrected <- tmp
-
 base::lapply(names(data_corrected), function(plate_name){
   
-  #plate_name =  names(data_corrected)[5] #FIXME delete me
+  #plate_name =  names(data_corrected)[1] #FIXME delete me
   
   print(plate_name)
   
@@ -256,7 +279,7 @@ base::lapply(names(data_corrected), function(plate_name){
   
   metadata_df <- data_raw[,metadata_cols]
   
-  metadata_df <- metadata_df %>% group_by(get(grouping_vars)) %>% slice(1) %>% ungroup()
+  metadata_df <- metadata_df %>% dplyr::group_by(get(grouping_vars)) %>% dplyr::slice(1) %>% ungroup()
   
   metadata_df[ncol(metadata_df)] <- NULL
   
@@ -322,6 +345,10 @@ base::lapply(names(data_corrected), function(plate_name){
 names(data_corrected) <- fileNames
 
 # combining metadata of source.plates into growth_data ######
+
+#source_layout[[1:2]] one and two refer to the first batch (plate 1 and 2), which had problems in Echo transfer.
+#source_layout[[3:4]] three and four refer to the second GOOD batch (plate 3 and 4), which were used in the big screen.
+
 
 source_layout <- # import source plate layout data
   
@@ -410,11 +437,13 @@ data_corrected <-
   
   lapply(names(data_corrected), function(x){
     
-    #x = "20191029/results/OVCAR4_CL3_P2.txt"
+    #x = "20191106/results/LOXIMVI_CL2_P1.txt"
     
-    source_id <- unlist(subset(source_plates, filenames == x, sourceid))
+    source_id <- unlist(subset(source_plates, filenames == x, uniqueID))
     
-    exception_wells <- subset(exceptions, Destination.Plate.Name  == source_id, Destination.Well, drop = T)
+    exception_wells <- subset(exceptions[[2]], cellPlateBC  == source_id, WellNameTransferError, drop = T)
+    
+    exception_wells <-  unlist(strsplit(exception_wells, split = ","))
     
     tmp_data <- data_corrected[[x]]
     
@@ -446,3 +475,6 @@ data_corrected <- subset(data_corrected, !(Drug == "DMSO" & !(Final_conc_uM %in%
 
 rm(list = ls()[!ls()=="data_corrected"])
 
+setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data")
+
+save(data_corrected, file = "growth_curves.RData")
