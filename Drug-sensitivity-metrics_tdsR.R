@@ -10,9 +10,7 @@ library(dplyr); library(tidyr); library(ggplot2)
 
 # we need to select time point zero as the time we treated the samples (as per their requirements)
 
-devtools::load_all("C:\\Mauro_r_library\\tdsR")
-
-time_treatment <- 24
+time_treatment <- 0
 
 drugs_in_screen <- c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO", NA, "Water", "WATER", "H2O", "Dmso", "Control", "Ctrl", "exception"))]))
 
@@ -106,15 +104,136 @@ rownames(data_Grmetrics_Ttm) <- NULL
 
 # merge drug df and control df
 
+drug = "Asparaginase"
+
 data_comb <- rbind(data_Grmetrics_Ctr, data_Grmetrics_Ttm)
 
-#data_comb <-subset(data_comb, cell_line =="HT29" & agent %in% }("-", "Chlormethine", "BPTES"))
+#data_comb <-subset(data_comb, cell_line =="T47D" & agent %in% c("-", "Pemetrexed"))
+
+data_comb <-subset(data_comb, agent %in% c("-", drug))
 
 data_comb$cell_line <- as.character(data_comb$cell_line)
 
-test <- subset(data_comb, cell_line == "ACHN")
+data_comb <- subset(data_comb, time <= 100)
 
-test <- subset(test, agent == "Gemcitabine" | agent == "ACHN")
+#data_comb <- subset(data_comb, cell_line == "T47D" & agent == "Methotrexate")
 
-tdsR_fit(test, groupingVariables = c("cell_line", "agent"))
+devtools::load_all("C:\\Mauro_r_library\\tdsR")
+
+tmp <- tdsR_fit(inputData = data_comb,
+                groupingVariables = c("cell_line", "agent"),
+                upperLimitThreshold = 1,
+                upperLimit = 0.8,
+                timeTreatment = 0, 
+                smoothData = T,
+                orderConc = T)
+
+output_params <- tdsR_getOutput(inputData = tmp, metric = "parameters")
+
+output <- tdsR_getOutput(inputData = tmp, metric = "tdsR")
+
+output <- data.frame(output)
+
+tmp <- strsplit(rownames(output), split = " ")
+
+output$cell_line <- unlist(lapply(tmp, "[[", 1))
+
+output$agent <- unlist(lapply(tmp, "[[", 2))
+
+# e <- ggplot(output, aes(x=reorder(agent,as.numeric(X1) , median), y = as.numeric(X1)))
+# 
+# e + geom_violin(aes(fill = agent))+
+#   theme(legend.position = "n", axis.text.x = element_text(angle = 90, size = 13.1))+geom_jitter(
+#     aes(),
+#     position = position_jitter(0.2),
+#     size = 1.5)
+
+
+
+
+
+#### plot cell line growth curves #####
+
+###FIXME to show Methotrexate
+###FIXME to show Omacetaxine
+
+#load("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data\\tdsR_output.Rdata")
+
+lapply(unique(data_comb$agent), function(idx){
+  
+  output_tdsR = output
+  
+  test <- subset(data_comb, agent == idx | agent == "-")
+  
+  test$key <- paste(test$cell_line, test$agent)
+  
+  output_tdsR$key <- paste(output_tdsR$cell_line, output_tdsR$agent)
+  
+  output_tdsR <- output_tdsR[,c("tds", "key")]
+  
+  test <- left_join(test, output_tdsR, by = "key")
+  
+  test$tds <- as.numeric(as.character(test$tds))
+  
+  #test <- subset(test, cell_line == "ACHN" | cell_line == "M14" )
+  
+  library(RColorBrewer)
+  
+  p <- ggplot(test, aes(x = time, y= cell_count, col = factor(concentration )))+
+    geom_smooth()+
+    geom_vline(aes(xintercept = tds))+
+    facet_wrap(~cell_line, ncol = 3)+
+    scale_colour_hue(h = c(270, 360))+
+    theme_bw()+
+    scale_x_continuous(n.breaks = 10)+
+    geom_vline(xintercept = 0, linetype="dotted", size = 1)
+  
+  setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\tdsR_orderConc_zero-lassymp")
+  
+  ggsave(filename = paste0(idx, ".png"), p, device = "png")
+  
+})
+
+output_tdsR = output
+
+test <- subset(data_comb, agent == "Gemci" | agent == "-")
+
+test$key <- paste(test$cell_line, test$agent)
+
+output_tdsR$key <- paste(output_tdsR$cell_line, output_tdsR$agent)
+
+output_tdsR <- output_tdsR[,c("tds", "key")]
+
+test <- left_join(test, output_tdsR, by = "key")
+
+test$tds <- as.numeric(as.character(test$tds))
+
+#test <- subset(test, cell_line == "ACHN" | cell_line == "M14" )
+
+library(RColorBrewer)
+
+ggplot(test, aes(x = time, y= cell_count, col = factor(concentration )))+
+  geom_smooth()+
+  geom_vline(aes(xintercept = tds))+
+  facet_wrap(~cell_line, ncol = 3)+
+  scale_colour_hue(h = c(270, 360))+
+  theme_bw()+
+  scale_x_continuous(n.breaks = 10)+
+  geom_vline(xintercept = 0, linetype="dotted", size = 1)
+  #+
+
+  #scale_x_continuous(breaks = seq(-10,100,10), limits = c(-10,100))
+
+##### plot output parameters ####
+
+tmp <- subset(output_params, key == "ACHN Erlotinib")
+
+
+### export for downstream processing
+
+rm(list = ls()[!ls()%in% "output_tdsR"])
+
+setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data")
+
+save(output_tdsR, file = "tdsR_output.RData")
 
