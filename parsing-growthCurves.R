@@ -20,6 +20,20 @@ source('C:/Users/masierom/polybox/Programing/96_to_384/Convert_96_to_384.R')
 
 source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\exceptions\\log_processing.r")
 
+## paths & definitions ##
+
+path_clean_data <- "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data"
+path_fig <- "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/mauro/cell_culture_data/190310_largescreen/figures"
+
+correct_for_initial_seeding = T
+skip_first_time = F
+r.2.threshold = 0.8
+slope_cutoff = 0.05
+p.val_cutoff = 0.05
+intercept_sd_cutoff = 2.5
+poly_degree = 8
+
+
 ## Importing source plates #####
 
 setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\growthData")
@@ -79,13 +93,16 @@ data <-
   
   lapply(fileNames, function(x) {
     
-    #x = fileNames[10]
+    #x = fileNames[1]
+    print(fileNames)
     
     df <-
       ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = x,
                        Plate_size = 384, FileDirectory = getwd(),
-                       time_output = "GMT")
+                       time_output = "GMT",skip_first_time=skip_first_time,
+                       correct_init_seeding = correct_for_initial_seeding)
     
+    df$Conf <- ifelse(df$Conf<0,0,df$Conf)
     
     return(df)
     
@@ -206,14 +223,14 @@ names(data) <- fileNames
 
 data_corrected <- data
 
-skip_outlier <- c(#"20190513/results/HCT15_P1.txt", # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
-                  "20190828/results/ACHN_CL3_P1.txt", # only 24h of growth
-                  "20190828/results/ACHN_CL3_P2.txt") # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+# skip_outlier <- c(#"20190513/results/HCT15_P1.txt", # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
+#                   "20190828/results/ACHN_CL3_P1.txt", # only 24h of growth
+#                   "20190828/results/ACHN_CL3_P2.txt") # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
 
 
-data_skip <- data_corrected[skip_outlier]
-
-data_corrected <- data_corrected[!(names(data_corrected) %in% skip_outlier)]
+# data_skip <- data_corrected[skip_outlier]
+# 
+# data_corrected <- data_corrected[!(names(data_corrected) %in% skip_outlier)]
 
 tmp_names <- names(data_corrected)
 
@@ -223,255 +240,466 @@ data_corrected <-
     
     print(x)
     
-    # plate_idx = names(data_corrected)[14]   #FIXME the name contains / which is not allowed as a finame.. use regex to only get the real plate name or remove the backslashed
+    #x = names(data_corrected)[1]
     
-    #x = "20190925/results/SF539_CL1_P2.txt"
+    #x="20191009/results/SKMEL2_CL2_P1.txt"
     
     plate_name = strsplit(x, split = "/")[[1]][3]
     
     x = data_corrected[[x]]
     
     good_wells <-
-      filter_growth_outliers(plate_name = plate_name, data = x, time_control = 0, save_diag_plots = F,
-                             save_plots_directory = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/Mauro/cell_culture_data/190310_LargeScreen/figures")
+      filter_growth_outliers(plate_name = paste(plate_name,"corr-init-seed=",correct_for_initial_seeding,'remove-first-time',skip_first_time,sep = "_"), data = x, time_control = 0, save_diag_plots = F,
+                             slope_cutoff = slope_cutoff,
+                             p.val_cutoff = p.val_cutoff,
+                             intercept_sd_cutoff = intercept_sd_cutoff,
+                             return_stats = T,
+                             save_plots_directory = paste(path_fig,"exclusions-growth", sep = "\\"))
+    
     
     new_data <-
-      x[!(x[,"Well"] %in% good_wells$wells_exception),]
+      x[!(x[,"Well"] %in% good_wells[[1]]$wells_exception),]
     
     print(paste("Plate:", plate_name,
-                "Exception-Number:",good_wells$wells_exception_number
+                "Exception-Number:",good_wells[[1]]$wells_exception_number
     ))
     
-    return(new_data)
+    return(list(new_data,good_wells[[2]]))
     
-  })
+    })
 
+  #save summary of plate outliers to excel
+
+setwd(paste0(path_clean_data,"/growth_data"))
+
+write.csv(do.call(rbind,lapply(data_corrected,"[[",2)),
+          paste("growth_data_exclusions_growth","corr-init-seed=",correct_for_initial_seeding,'remove-first-time',skip_first_time,".csv",sep = "_"))
+
+data_corrected <- lapply(data_corrected,"[[",1)
 
 names(data_corrected) <- tmp_names
 
-lapply(data_skip, function(plate){
-  if(is.null(plate)){warning("the plate is null")}
-})
+# lapply(data_skip, function(plate){
+#   if(is.null(plate)){warning("the plate is null")}
+# })
+# 
+# data_corrected <- append(data_corrected, data_skip)
+# 
+# data_corrected <- data_corrected[fileNames]
+# 
+# rm(data_skip, tmp_names)
 
-data_corrected <- append(data_corrected, data_skip)
+data_unfitted <- data_corrected
 
-data_corrected <- data_corrected[fileNames]
-
-rm(data_skip, tmp_names)
-
-# Fit the confluence for each well, and return fitted confluence. Keep the same plate map structure. ####
-
-base::lapply(names(data_corrected), function(plate_name){
-  
-  #plate_name =  names(data_corrected)[1] #FIXME delete me
-  
-  print(plate_name)
-  
-  r.2.threshold = 0.8
-  
-  data_raw <- data_corrected[[plate_name]]
-  
-  plate_name <- strsplit(plate_name, split = "/")[[1]][3]
-  
-  grouping_vars <- "Well"
-  
-  metadata_cols <- colnames(data_raw)[!colnames(data_raw) %in% c("Time", "Conf")]
-  
-  metadata_df <- data_raw[,metadata_cols]
-  
-  metadata_df <- metadata_df %>% dplyr::group_by(get(grouping_vars)) %>% dplyr::slice(1) %>% ungroup()
-  
-  metadata_df[ncol(metadata_df)] <- NULL
-  
-  fitted_data <- 
+for(poly_degree in poly_degree){
     
-    lapply(unique(data_raw$Well), function(idx_well){
+  data_corrected = data_unfitted
+  
+  # Fit the confluence for each well, and return fitted confluence. Keep the same plate map structure. ####
+  
+  exclusions_noise <- data.frame("plate"=character(),"exclusions"=integer())
+  
+  base::lapply(names(data_corrected), function(plate_name){
+    
+    #plate_name =  names(data_corrected)[1]
+    
+    print(plate_name)
+    
+    data_raw <- data_corrected[[plate_name]]
+    
+    plate_name <- strsplit(plate_name, split = "/")[[1]][3]
+    
+    grouping_vars <- "Well"
+    
+    metadata_cols <- colnames(data_raw)[!colnames(data_raw) %in% c("Time", "Conf")]
+    
+    metadata_df <- data_raw[,metadata_cols]
+    
+    metadata_df <- metadata_df %>% dplyr::group_by(get(grouping_vars)) %>% dplyr::slice(1) %>% ungroup()
+    
+    metadata_df[ncol(metadata_df)] <- NULL
+    
+    fitted_data <- 
       
-      #idx_well <- unique(data_raw$Well)[5] #FIXME delete me 
+      lapply(unique(data_raw$Well), function(idx_well){
+        
+        #idx_well <- unique(data_raw$Well)[5] #FIXME delete me 
+        
+        data_well_raw <- subset(data_raw[,c("Time", "Conf", "Well")], Well == idx_well)
+        
+        min_scan_Time <- ceiling(min(data_well_raw$Time))
+        
+        max_scan_Time <- floor(max(data_well_raw$Time))
+        
+        model <- get_growthMetrics(data_well_raw, degree = poly_degree)
+        
+        time_24 <- model[[2]][4][which(abs(model[[2]][4] - 24) == min(abs(model[[2]][4] - 24))),]
+        
+        time_1h_window <- c(time_24-0.5, time_24+0.5)
+        
+        time_2h_window <-c(time_24-1, time_24+1)
+        
+        time_3h_window <- c(time_24-1.5, time_24+1.5)
+        
+        GR_24 <- subset(model[[2]],time==time_24,select = 'GR',drop = T)
+        
+        GR_1h_window <- mean(subset(model[[2]],time >=time_1h_window[1]&time <=time_1h_window[2],select = 'GR',drop = T))
+        
+        GR_2h_window <- mean(subset(model[[2]],time >=time_2h_window[1]&time <=time_2h_window[2],select = 'GR',drop = T))
+        
+        GR_3h_window <- mean(subset(model[[2]],time >=time_3h_window[1]&time <=time_3h_window[2],select = 'GR',drop = T))
+        
+        model_pred_poly <- model[[3]]
+        
+        time_sequence <- seq(min_scan_Time ,max_scan_Time,1)
+        
+        model_well_pred <- predict(model_pred_poly, data.frame(Time = time_sequence))
+        
+        pred_conf <- data.frame(Well = idx_well, Time = time_sequence, Conf = model_well_pred)
+        
+        pred_conf$GR24 <- GR_24
+        pred_conf$GR_1h_window <- GR_1h_window
+        pred_conf$GR_2h_window <- GR_2h_window
+        pred_conf$GR_3h_window <- GR_3h_window
+          
+        
+        well_metrics <- summary(model_pred_poly)
+        
+        well_metrics <- data.frame(Well = idx_well, adj.r.2 = well_metrics$adj.r.squared)
+        
+        return(list(pred_conf, well_metrics))
+        
+      })
+    
+    # save diagnostic plots
+    
+    diagnostics_well <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[2]]) ) #for each plate, plot diagnostic plots with the r-squared.. check if any of fits have ploblems
+    
+    filename = paste("fitting-qc", plate_name, gsub(" ", "_",as.character(Sys.time())), ".png", sep = "_")
+    
+    filename = gsub(pattern = ":", replacement = "_", x = filename)
+    
+    bad_wells = diagnostics_well$Well[diagnostics_well$adj.r.2 < r.2.threshold]
+    
+    exclusions_noise[plate_name,] = c(plate_name,length(bad_wells))
+    
+    #print(paste(as.character(bad_wells), plate_name), sep = "_")
+    
+    png(filename = paste(path_fig,"exclusions-noise", filename , sep = "/"))
+    fig <- hist(diagnostics_well$adj.r.2, main = plate_name)
+    text( paste0("adj.r.2 < 0.8 = ", length(bad_wells)) , x = fig$breaks[3], y = max(fig$counts))
+    dev.off()
+    
+    # return a df with the conf + metadata columns
+    
+    pred_conf <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[1]]) ) #for each plate, plot diagnostic plots with the R-squared.. check if any of fits have ploblems
+    
+    pred_conf <- subset(pred_conf, !(Well %in% bad_wells))
+    
+    pred_conf <- inner_join(pred_conf, metadata_df, by = grouping_vars)
+    
+    #return a df with 
+    
+    
+    return(list(pred_conf, exclusions_noise))
+    
+  }) -> data_corrected
+  
+  #save exclusions based on r^2
+  
+  setwd(paste0(path_clean_data,"/growth_data"))
+  write.csv(do.call(rbind,lapply(data_corrected,"[[",2)),paste0("growth_data_exclusions_noise","polydegree=",poly_degree,".csv"))
+  data_corrected <- lapply(data_corrected,function(x){
+    return(x[[1]])
+    })
+  names(data_corrected) <- fileNames
+  
+  # combining metadata of source.plates into growth_data ######
+  
+  #source_layout[[1:2]] one and two refer to the first batch (plate 1 and 2), which had problems in Echo transfer.
+  #source_layout[[3:4]] three and four refer to the second GOOD batch (plate 3 and 4), which were used in the big screen.
+  
+  
+  source_layout <- # import source plate layout data
+    
+    lapply(list.files("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\cpd_data\\large_screen_plate_layout",
+                      pattern = "randomized",
+                      full.names = T,
+                      recursive = T),
+           function(x) {
+             
+             #x =  "\\\\imsbnas.d.ethz.ch\\sauer1\\users\\Mauro\\cpd_data\\large_screen_plate_layout/190806_NewMSP_Layout/randomized_layout_1MSP_batch2.xls"
+             
+             tmp_data  = readxl::read_xls(x)
+             
+             tmp_data$Well = paste0(tmp_data$Row, tmp_data$Column)
+             
+             return(tmp_data)
+             
+           })
+  
+  data_corrected <-
+    
+    lapply(names(data_corrected), function(x){
       
-      data_well_raw <- subset(data_raw[,c("Time", "Conf", "Well")], Well == idx_well)
+      stopifnot(require(dplyr))
       
-      min_scan_Time <- ceiling(min(data_well_raw$Time))
+      #x = names(data_corrected)[1] 
       
-      max_scan_Time <- floor(max(data_well_raw$Time))
+      tmp_data = data_corrected[[x]]
       
-      model_pred_poly <- get_growthMetrics(data_well_raw, degree = 7)[[3]]
+      match_source <- source_plates[source_plates$filenames == x,c("sourceid", "batch")] 
       
-      time_sequence <- seq(min_scan_Time ,max_scan_Time,1)
+      if(match_source$batch == "batch_1"){
+        
+        if(grepl(pattern = "1MSP", x = match_source$sourceid)){
+          
+          tmp_data <- inner_join(tmp_data, source_layout[[1]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+          
+          return(tmp_data)
+          
+        }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
+          
+          tmp_data <- inner_join(tmp_data, source_layout[[2]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+          
+          return(tmp_data)
+          
+        }else{
+          
+          stop("some experimental plate could not be matched to a source plate layout.")
+          
+        }
+        
+      } else if(match_source$batch == "batch_2"){
+        
+        if(grepl(pattern = "1MSP", x = match_source$sourceid)){
+          
+          tmp_data <- inner_join( tmp_data, source_layout[[3]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+          
+          return(tmp_data)
+          
+        }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
+          
+          tmp_data <- inner_join(  tmp_data, source_layout[[4]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+          
+          return(tmp_data)
+          
+        }else{
+          
+          stop("some experimental plate could not be matched to a source plate layout.")
+          
+        }
+        
+      }else{
+        
+        stop("some information is wrong with the match_source$source_id")
+        
+      }
       
-      model_well_pred <- predict(model_pred_poly, data.frame(Time = time_sequence))
+    } )
+  
+  names(data_corrected) <- fileNames
+  
+  # relabelling bad wells based on Echo transfer. #########
+  # In future I can relabel those with medium, to increase the number of controls, today as exception
+  
+  data_corrected <-
+    
+    lapply(names(data_corrected), function(x){
       
-      pred_conf <- data.frame(Well = idx_well, Time = time_sequence, Conf = model_well_pred)
+      #x = "20191106/results/LOXIMVI_CL2_P1.txt"
       
-      well_metrics <- summary(model_pred_poly)
+      source_id <- unlist(subset(source_plates, filenames == x, uniqueID))
       
-      well_metrics <- data.frame(Well = idx_well, adj.r.2 = well_metrics$adj.r.squared)
+      exception_wells <- subset(exceptions[[2]], cellPlateBC  == source_id, WellNameTransferError, drop = T)
       
-      return(list(pred_conf, well_metrics))
+      exception_wells <-  unlist(strsplit(exception_wells, split = ","))
+      
+      tmp_data <- data_corrected[[x]]
+      
+      tmp_data[(tmp_data$Well %in% exception_wells), c("Drug")] <- c("exception")
+      
+      tmp_data[(tmp_data$Well %in% exception_wells), c("Final_conc_uM")] <- c(333)
+      
+      tmp_data$cell<- strsplit(x, split = "/")[[1]][3]
+      
+      tmp_data$cell <- strsplit(tmp_data$cell, split = "_")[[1]][1]
+      
+      tmp <- strsplit(x, split = "_")[[1]][3]
+      
+      tmp_data$source_plate <- strsplit(tmp, split = ".", fixed = T)[[1]][1]
+      
+      return(tmp_data)
       
     })
   
-  # save diagnostic plots
+  names(data_corrected) <- fileNames
   
-  diagnostics_well <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[2]]) ) #for each plate, plot diagnostic plots with the r-squared.. check if any of fits have ploblems
+  data_corrected <- do.call(rbind, data_corrected)
   
-  save_plots_directory = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/mauro/cell_culture_data/190310_largescreen/figures"
+  setwd(paste0(path_clean_data,"/growth_data"))
   
-  filename = paste("fitting-qc", plate_name, gsub(" ", "_",as.character(Sys.time())), ".png", sep = "_")
+  #remove unsused wells (wells without drug in drug source plate).
   
-  filename = gsub(pattern = ":", replacement = "_", x = filename)
+  data_unused_wells <- data_corrected[(is.na(data_corrected$Final_conc_uM)|
+                                        is.na(data_corrected$Drug)), ]
   
-  bad_wells = diagnostics_well$Well[diagnostics_well$adj.r.2 < r.2.threshold]
+  data_corrected <- data_corrected[!(is.na(data_corrected$Final_conc_uM)&
+                                       !is.na(data_corrected$Drug)), ]
   
-  #print(paste(as.character(bad_wells), plate_name), sep = "_")
+  # removing DMSO that is not 33.3 and 3.33, as it causes many data analysis problems ######
   
-  png(filename = paste(save_plots_directory, filename , sep = "/"))
-  fig <- hist(diagnostics_well$adj.r.2, main = plate_name)
-  text( paste0("adj.r.2 < 0.8 = ", length(bad_wells)) , x = fig$breaks[3], y = max(fig$counts))
-  dev.off()
+  data_corrected <- subset(data_corrected, !(Drug == "DMSO" & !(Final_conc_uM %in% c(333,367))))
   
-  # return a df with the right columns
+  #calculate CVs across each cell line
   
-  pred_conf <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[1]]) ) #for each plate, plot diagnostic plots with the R-squared.. check if any of fits have ploblems
+  #data_controls <- subset(data_corrected, Drug == "DMSO")
   
-  pred_conf <- subset(pred_conf, !(Well %in% bad_wells))
+  data_drugs <- subset(data_corrected, !Drug == "DMSO")
   
-  pred_conf <- inner_join(pred_conf, metadata_df, by = grouping_vars)
+  tmp <- data_drugs %>%
+    group_by(cell, Drug,Final_conc_uM)%>%
+    dplyr::filter(Time == 24) %>%
+    summarise(cv= (sd(Conf)/mean(Conf))*100)
   
-  return(pred_conf)
+  write.csv(tmp,paste0("cv24h_polydegree_",poly_degree,".csv"))
   
-}) -> data_corrected
+  tmp <- data_drugs %>%
+    group_by(cell, Drug,Final_conc_uM)%>%
+    dplyr::filter(Time == 72) %>%
+    summarise(cv= (sd(Conf)/mean(Conf))*100)
+  
+  write.csv(tmp,paste0("cv72h_polydegree_",poly_degree,".csv"))
 
-names(data_corrected) <- fileNames
+}
 
-# combining metadata of source.plates into growth_data ######
+# check cvs across GR and GR window
 
-#source_layout[[1:2]] one and two refer to the first batch (plate 1 and 2), which had problems in Echo transfer.
-#source_layout[[3:4]] three and four refer to the second GOOD batch (plate 3 and 4), which were used in the big screen.
+data_drugs <- subset(data_corrected, !Drug == "DMSO")
+
+data_drugs <- data_drugs %>%
+  group_by(cell, Drug,Final_conc_uM,Well)%>%
+  slice(1) 
+
+tmp <- data_drugs %>%
+  group_by(cell, Drug,Final_conc_uM)%>%
+  summarise(cv_GR24= (sd(GR24)/mean(GR24))*100,
+            cv_w1= (sd(GR_1h_window)/mean(GR_1h_window))*100,
+            cv_w2= (sd(GR_2h_window)/mean(GR_2h_window))*100,
+            cv_w3= (sd(GR_3h_window)/mean(GR_3h_window))*100)
+
+tmp <- pivot_longer(tmp,cols = -c("cell", "Drug","Final_conc_uM"),names_to = "GR")
+
+tmp <- subset(tmp,abs(value)<30)
+ggplot(tmp,aes(x=value,col=GR))+
+  geom_density()
+
+ggplot(tmp,aes(x=value,col=GR))+
+  geom_density()+
+  facet_wrap(~Drug)
+
+data_drugs <- data_drugs%>%group_by(cell, Drug,Final_conc_uM)%>% summarise(GR24 = mean(GR24))
+
+ggplot(subset(data_drugs,abs(GR24)<0.1 & cell=="M14"),aes(x=Drug,y=GR24,col=log(Final_conc_uM)))+
+  geom_boxplot()+
+  geom_jitter(width = 0.2)+
+  scale_colour_gradient2(low = "grey",mid = "red",high =  "red4")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  facet_wrap(~cell)
 
 
-source_layout <- # import source plate layout data
-  
-  lapply(list.files("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\cpd_data\\large_screen_plate_layout",
-                    pattern = "randomized",
-                    full.names = T,
-                    recursive = T),
-         function(x) {
-           
-           #x =  "\\\\imsbnas.d.ethz.ch\\sauer1\\users\\Mauro\\cpd_data\\large_screen_plate_layout/190806_NewMSP_Layout/randomized_layout_1MSP_batch2.xls"
-           
-           tmp_data  = readxl::read_xls(x)
-           
-           tmp_data$Well = paste0(tmp_data$Row, tmp_data$Column)
-           
-           return(tmp_data)
-           
-         })
+#analyse polymomial data. Compare cvs across groups to check which one produces better CVs across drugs
 
-data_corrected <-
-  
-  lapply(names(data_corrected), function(x){
-    
-    stopifnot(require(dplyr))
-    
-    #x = names(data_corrected)[1] 
-    
-    tmp_data = data_corrected[[x]]
-    
-    match_source <- source_plates[source_plates$filenames == x,c("sourceid", "batch")] 
-    
-    if(match_source$batch == "batch_1"){
-      
-      if(grepl(pattern = "1MSP", x = match_source$sourceid)){
-        
-        tmp_data <- inner_join(tmp_data, source_layout[[1]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-        
-        return(tmp_data)
-        
-      }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
-        
-        tmp_data <- inner_join(tmp_data, source_layout[[2]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-        
-        return(tmp_data)
-        
-      }else{
-        
-        stop("some experimental plate could not be matched to a source plate layout.")
-        
-      }
-      
-    } else if(match_source$batch == "batch_2"){
-      
-      if(grepl(pattern = "1MSP", x = match_source$sourceid)){
-        
-        tmp_data <- inner_join( tmp_data, source_layout[[3]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-        
-        return(tmp_data)
-        
-      }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
-        
-        tmp_data <- inner_join(  tmp_data, source_layout[[4]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-        
-        return(tmp_data)
-        
-      }else{
-        
-        stop("some experimental plate could not be matched to a source plate layout.")
-        
-      }
-      
-    }else{
-      
-      stop("some information is wrong with the match_source$source_id")
-      
-    }
-    
-  } )
+#24h
 
-names(data_corrected) <- fileNames
+cvfiles24 <- list.files(pattern = "cv24h")
 
-# relabelling bad wells based on Echo transfer. #########
-# In future I can relabel those with medium, to increase the number of controls, today as exception
+dataorder <- unlist(strsplit(cvfiles24,split = ".csv"))
 
-data_corrected <-
-  
-  lapply(names(data_corrected), function(x){
-    
-    #x = "20191106/results/LOXIMVI_CL2_P1.txt"
-    
-    source_id <- unlist(subset(source_plates, filenames == x, uniqueID))
-    
-    exception_wells <- subset(exceptions[[2]], cellPlateBC  == source_id, WellNameTransferError, drop = T)
-    
-    exception_wells <-  unlist(strsplit(exception_wells, split = ","))
-    
-    tmp_data <- data_corrected[[x]]
-    
-    tmp_data[(tmp_data$Well %in% exception_wells), c("Drug")] <- c("exception")
-    
-    tmp_data[(tmp_data$Well %in% exception_wells), c("Final_conc_uM")] <- c(333)
-    
-    tmp_data$cell<- strsplit(x, split = "/")[[1]][3]
-    
-    tmp_data$cell <- strsplit(tmp_data$cell, split = "_")[[1]][1]
-    
-    tmp <- strsplit(x, split = "_")[[1]][3]
-    
-    tmp_data$source_plate <- strsplit(tmp, split = ".", fixed = T)[[1]][1]
-    
-    return(tmp_data)
-    
-  })
+dataorder <- as.numeric(unlist(lapply(strsplit(dataorder,split = "_"),'[[',3)))
 
-names(data_corrected) <- fileNames
+cvdata24 <- lapply(cvfiles24, read.csv)
 
-data_corrected <- do.call(rbind, data_corrected)
+meancv24 <- unlist(lapply(cvdata24, function(x){
+  mean(x$cv,na.rm=T)
+}))
 
-data_corrected <- data_corrected[!(is.na(data_corrected$Final_conc_uM)), ]
+threshold20cv24 <- unlist(lapply(cvdata24, function(x){
+  sum(x$cv<20,na.rm = T)/nrow(x)
+}))
 
-# removing DMSO that is not 33.3 and 3.33, as it causes many data analysis problems ######
 
-data_corrected <- subset(data_corrected, !(Drug == "DMSO" & !(Final_conc_uM %in% c(333,367)))) #FIXME include DMSO that increased volume
+meancv24 <- meancv24[order(as.integer(dataorder-2))]
+threshold20cv24 <- threshold20cv24[order(as.integer(dataorder-2))]
+
+#48h
+
+cvfiles72 <- list.files(pattern = "cv72h")
+
+dataorder <- unlist(strsplit(cvfiles72,split = ".csv"))
+
+dataorder <- as.numeric(unlist(lapply(strsplit(dataorder,split = "_"),'[[',3)))
+
+cvdata72 <- lapply(cvfiles72, read.csv)
+
+meancv72 <- unlist(lapply(cvdata72, function(x){
+  mean(x$cv,na.rm=T)
+}))
+
+threshold20cv72 <- unlist(lapply(cvdata72, function(x){
+  sum(x$cv<20,na.rm = T)/nrow(x)
+}))
+
+
+meancv72 <- meancv72[order(as.integer(dataorder-2))]
+threshold20cv72 <- threshold20cv72[order(as.integer(dataorder-2))]
+
+results_mean_cv <- rbind(meancv24,meancv72)
+results_threshold_cv <- rbind(threshold20cv24,threshold20cv72)
+
+colnames(results_mean_cv) <- as.numeric(sort(dataorder))
+colnames(results_threshold_cv) <- as.numeric(sort(dataorder))
+
+rownames(results_mean_cv) <- c(24,72)
+rownames(results_threshold_cv) <- c(24,72)
+
+#exclusion r2
+
+exclusions_24 <- list.files(pattern = "exclusions_noisepoly")
+
+dataorder <- unlist(strsplit(exclusions_24,split = ".csv"))
+
+dataorder <- as.numeric(unlist(lapply((strsplit(dataorder,split = "=")),"[[",2)))
+
+exclusion_data <- lapply(exclusions_24, read.csv)
+
+sumexclusions <- unlist(lapply(exclusion_data, function(x){
+  sum(x$exclusions,na.rm=T)
+}))
+
+sumexclusions <-  sumexclusions[order(as.integer(dataorder-2))]
+#sumexclusions <- sumexclusions[2:length(sumexclusions)]
+
+matplot(t(results_mean_cv), type = 'l', xaxt = 'n')
+legend('topright', rownames(results_mean_cv), col = seq_along(results_mean_cv), fill = seq_along(results_mean_cv))
+axis(1, at = 1:ncol(results_mean_cv), labels = colnames(results_mean_cv))
+
+matplot(t(results_threshold_cv), type = 'l', xaxt = 'n')
+legend('topright', rownames(results_threshold_cv), col = seq_along(results_threshold_cv), fill = seq_along(results_threshold_cv))
+axis(1, at = 1:ncol(results_threshold_cv), labels = colnames(results_threshold_cv))
+
+matplot(sumexclusions, type = 'l', xaxt = 'n')
+axis(1, at = 1:length(dataorder), labels = sort(dataorder))
+
+#check variability between plate 1 and plate 2
+
+
+#calculate variable GR at 24h
+
+GRwindow <- c(0,1)
+
+
+#save final outcome
 
 rm(list = ls()[!ls()=="data_corrected"])
 
