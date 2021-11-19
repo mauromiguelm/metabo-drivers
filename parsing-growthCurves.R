@@ -2,28 +2,23 @@
 
 library(ggplot2); library(RColorBrewer)
 
-# Importing plate times ####
+# Importing plate times ####  
 
 source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\analysis\\time_analysis.R")
 
 # import functions cell culture #####
 
-source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\CellCultureAnalysis.R")
-
-source("C:\\Users\\masierom\\polybox\\Programing\\Project_exometabolites\\modelling_growth_curves.R")
-
-#import plate 96-384 converter #####
-
-source('C:/Users/masierom/polybox/Programing/96_to_384/Convert_96_to_384.R')
+sapply(list.files("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\",full.names=T),source,.GlobalEnv)
 
 # Importing exceptions ####
 
 source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\exceptions\\log_processing.r")
 
-## paths & definitions ##
+## paths & parameters ##
 
 path_clean_data <- "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data"
 path_fig <- "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/mauro/cell_culture_data/190310_largescreen/figures"
+
 
 correct_for_initial_seeding = T
 skip_first_time = F
@@ -43,11 +38,6 @@ source_plates <- data.frame(
     path = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\Growthdata\\",
     pattern = "[P][1-2][.txt]",
     recursive = T))
-
-# source_plates <- rbind(
-#   data.frame(filenames = list.files ("\\\\imsbnas.d.ethz.ch\\sauer1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\growthData\\20190828\\results", 
-#                                                    pattern = ".txt",
-#                                                    recursive = T)))
 
 source_plates$sourceid <- ifelse(grepl(pattern = "P1", source_plates$filenames), "1MSP001", "2MSP001")
 
@@ -102,7 +92,6 @@ data <-
                        time_output = "GMT",skip_first_time=skip_first_time,
                        correct_init_seeding = correct_for_initial_seeding)
     
-    df$Conf <- ifelse(df$Conf<0,0,df$Conf)
     
     return(df)
     
@@ -112,15 +101,9 @@ names(data) <- fileNames
 
 #### load data ####
 
-#load("C:/Users/mauro/Desktop/20200113_envir.2.RData")
-
 ### Create elapsed and sampling times based on time_vectors for the 384 plates ######
 
 data <- lapply(names(data), function(filename){
-  
-  #filename <- names(data)[13]
-  
-  # filename = "20191029/results/OVCAR4_CL3_P1.txt"
   
   print(filename)
   
@@ -155,8 +138,6 @@ data <- lapply(names(data), function(filename){
     
     data_elapsed <- conv_384_96(data_elapsed) #get which 384 wells belong to each 96 quadrant
     
-    #cell_line = "HCT15"
-    
     quad_time_keys <-  time_vectors$samp_p1_96[[cell_line]]
     
     if(is.null(quad_time_keys)) stop("cannot find matching time for CL")
@@ -186,8 +167,6 @@ data <- lapply(names(data), function(filename){
     # for each plate, calculate the time in which it was sampled
     
     data_elapsed <- conv_384_96(data_elapsed) #get which 384 wells belong to each 96 quadrant
-    
-    #cell_line = "HCT15"
     
     quad_time_keys <-  time_vectors$samp_p2_96[[cell_line]]
     
@@ -223,15 +202,6 @@ names(data) <- fileNames
 
 data_corrected <- data
 
-# skip_outlier <- c(#"20190513/results/HCT15_P1.txt", # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
-#                   "20190828/results/ACHN_CL3_P1.txt", # only 24h of growth
-#                   "20190828/results/ACHN_CL3_P2.txt") # For the HCT-15_P1, due to time points before drugs, we have a problem with outlier detection. Hence, I am using the unfilteed data
-
-
-# data_skip <- data_corrected[skip_outlier]
-# 
-# data_corrected <- data_corrected[!(names(data_corrected) %in% skip_outlier)]
-
 tmp_names <- names(data_corrected)
 
 data_corrected <-
@@ -239,10 +209,6 @@ data_corrected <-
   lapply(names(data_corrected), FUN = function(x){
     
     print(x)
-    
-    #x = names(data_corrected)[1]
-    
-    #x="20191009/results/SKMEL2_CL2_P1.txt"
     
     plate_name = strsplit(x, split = "/")[[1]][3]
     
@@ -268,7 +234,7 @@ data_corrected <-
     
     })
 
-  #save summary of plate outliers to excel
+#save summary of plate outliers to excel
 
 setwd(paste0(path_clean_data,"/growth_data"))
 
@@ -278,16 +244,6 @@ write.csv(do.call(rbind,lapply(data_corrected,"[[",2)),
 data_corrected <- lapply(data_corrected,"[[",1)
 
 names(data_corrected) <- tmp_names
-
-# lapply(data_skip, function(plate){
-#   if(is.null(plate)){warning("the plate is null")}
-# })
-# 
-# data_corrected <- append(data_corrected, data_skip)
-# 
-# data_corrected <- data_corrected[fileNames]
-# 
-# rm(data_skip, tmp_names)
 
 data_unfitted <- data_corrected
 
@@ -300,8 +256,6 @@ for(poly_degree in poly_degree){
   exclusions_noise <- data.frame("plate"=character(),"exclusions"=integer())
   
   base::lapply(names(data_corrected), function(plate_name){
-    
-    #plate_name =  names(data_corrected)[1]
     
     print(plate_name)
     
@@ -325,15 +279,22 @@ for(poly_degree in poly_degree){
         
         #idx_well <- unique(data_raw$Well)[5] #FIXME delete me 
         
+        #idx_well = 'E11'
+        
         data_well_raw <- subset(data_raw[,c("Time", "Conf", "Well")], Well == idx_well)
         
         min_scan_Time <- ceiling(min(data_well_raw$Time))
         
         max_scan_Time <- floor(max(data_well_raw$Time))
         
-        model <- get_growthMetrics(data_well_raw, degree = poly_degree)
+        model <- get_growthMetrics(data = data_well_raw, degree = poly_degree)
+        
+      
+        time_12 <- model[[2]][4][which(abs(model[[2]][4] - 12) == min(abs(model[[2]][4] - 12))),]
         
         time_24 <- model[[2]][4][which(abs(model[[2]][4] - 24) == min(abs(model[[2]][4] - 24))),]
+        
+        time_34 <- model[[2]][4][which(abs(model[[2]][4] - 34) == min(abs(model[[2]][4] - 34))),]
         
         time_1h_window <- c(time_24-0.5, time_24+0.5)
         
@@ -341,7 +302,11 @@ for(poly_degree in poly_degree){
         
         time_3h_window <- c(time_24-1.5, time_24+1.5)
         
+        GR_12 <- subset(model[[2]],time==time_12,select = 'GR',drop = T)
+        
         GR_24 <- subset(model[[2]],time==time_24,select = 'GR',drop = T)
+        
+        GR_34 <- subset(model[[2]],time==time_34,select = 'GR',drop = T)
         
         GR_1h_window <- mean(subset(model[[2]],time >=time_1h_window[1]&time <=time_1h_window[2],select = 'GR',drop = T))
         
@@ -357,12 +322,14 @@ for(poly_degree in poly_degree){
         
         pred_conf <- data.frame(Well = idx_well, Time = time_sequence, Conf = model_well_pred)
         
-        pred_conf$GR24 <- GR_24
+        pred_conf$GR12 <-         GR_12
+        pred_conf$GR24 <-         GR_24
+        pred_conf$GR34 <-         GR_34
         pred_conf$GR_1h_window <- GR_1h_window
         pred_conf$GR_2h_window <- GR_2h_window
         pred_conf$GR_3h_window <- GR_3h_window
-          
         
+      
         well_metrics <- summary(model_pred_poly)
         
         well_metrics <- data.frame(Well = idx_well, adj.r.2 = well_metrics$adj.r.squared)
@@ -501,7 +468,6 @@ for(poly_degree in poly_degree){
   names(data_corrected) <- fileNames
   
   # relabelling bad wells based on Echo transfer. #########
-  # In future I can relabel those with medium, to increase the number of controls, today as exception
   
   data_corrected <-
     
@@ -541,163 +507,37 @@ for(poly_degree in poly_degree){
   
   #remove unsused wells (wells without drug in drug source plate).
   
-  data_unused_wells <- data_corrected[(is.na(data_corrected$Final_conc_uM)|
-                                        is.na(data_corrected$Drug)), ]
+  data_unused_wells <- data_corrected[(is.na(data_corrected$Drug)), ]
   
-  data_corrected <- data_corrected[!(is.na(data_corrected$Final_conc_uM)&
-                                       !is.na(data_corrected$Drug)), ]
+  data_unused_wells <- rbind(data_unused_wells, data_corrected[(is.na(data_corrected$Final_conc_uM)), ])
+  
+  data_corrected <- data_corrected[!(is.na(data_corrected$Drug)),]
+  
+  data_corrected <- data_corrected[!(is.na(data_corrected$Final_conc_uM)),]
   
   # removing DMSO that is not 33.3 and 3.33, as it causes many data analysis problems ######
   
   data_corrected <- subset(data_corrected, !(Drug == "DMSO" & !(Final_conc_uM %in% c(333,367))))
   
-  #calculate CVs across each cell line
-  
-  #data_controls <- subset(data_corrected, Drug == "DMSO")
-  
-  data_drugs <- subset(data_corrected, !Drug == "DMSO")
-  
-  tmp <- data_drugs %>%
-    group_by(cell, Drug,Final_conc_uM)%>%
-    dplyr::filter(Time == 24) %>%
-    summarise(cv= (sd(Conf)/mean(Conf))*100)
-  
-  write.csv(tmp,paste0("cv24h_polydegree_",poly_degree,".csv"))
-  
-  tmp <- data_drugs %>%
-    group_by(cell, Drug,Final_conc_uM)%>%
-    dplyr::filter(Time == 72) %>%
-    summarise(cv= (sd(Conf)/mean(Conf))*100)
-  
-  write.csv(tmp,paste0("cv72h_polydegree_",poly_degree,".csv"))
+  data_corrected <- subset(data_corrected, !(Drug ==  "exception"))
 
 }
 
-# check cvs across GR and GR window
+#exclude groups with <3 reps
 
-data_drugs <- subset(data_corrected, !Drug == "DMSO")
+data_drugs <- subset(data_corrected,!Drug %in% c("PBS","DMSO") & Time == 24)
 
-data_drugs <- data_drugs %>%
-  group_by(cell, Drug,Final_conc_uM,Well)%>%
-  slice(1) 
+exclusions_reps <- data_drugs %>% group_by(cell, Drug, Final_conc_uM) %>% summarise(nreps = n())
 
-tmp <- data_drugs %>%
-  group_by(cell, Drug,Final_conc_uM)%>%
-  summarise(cv_GR24= (sd(GR24)/mean(GR24))*100,
-            cv_w1= (sd(GR_1h_window)/mean(GR_1h_window))*100,
-            cv_w2= (sd(GR_2h_window)/mean(GR_2h_window))*100,
-            cv_w3= (sd(GR_3h_window)/mean(GR_3h_window))*100)
+exclusions_reps <- subset(exclusions_reps, nreps <3)
 
-tmp <- pivot_longer(tmp,cols = -c("cell", "Drug","Final_conc_uM"),names_to = "GR")
+write.csv(exclusions_reps, "exclusion_nreps.csv")
 
-tmp <- subset(tmp,abs(value)<30)
-ggplot(tmp,aes(x=value,col=GR))+
-  geom_density()
+groups_to_exclude <- paste(exclusions_reps$cell,exclusions_reps$Drug, exclusions_reps$Final_conc_uM,sep = "_")
 
-ggplot(tmp,aes(x=value,col=GR))+
-  geom_density()+
-  facet_wrap(~Drug)
+groups <- paste(data_corrected$cell,data_corrected$Drug, data_corrected$Final_conc_uM,sep = "_")
 
-data_drugs <- data_drugs%>%group_by(cell, Drug,Final_conc_uM)%>% summarise(GR24 = mean(GR24))
-
-ggplot(subset(data_drugs,abs(GR24)<0.1 & cell=="M14"),aes(x=Drug,y=GR24,col=log(Final_conc_uM)))+
-  geom_boxplot()+
-  geom_jitter(width = 0.2)+
-  scale_colour_gradient2(low = "grey",mid = "red",high =  "red4")+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-  facet_wrap(~cell)
-
-
-#analyse polymomial data. Compare cvs across groups to check which one produces better CVs across drugs
-
-#24h
-
-cvfiles24 <- list.files(pattern = "cv24h")
-
-dataorder <- unlist(strsplit(cvfiles24,split = ".csv"))
-
-dataorder <- as.numeric(unlist(lapply(strsplit(dataorder,split = "_"),'[[',3)))
-
-cvdata24 <- lapply(cvfiles24, read.csv)
-
-meancv24 <- unlist(lapply(cvdata24, function(x){
-  mean(x$cv,na.rm=T)
-}))
-
-threshold20cv24 <- unlist(lapply(cvdata24, function(x){
-  sum(x$cv<20,na.rm = T)/nrow(x)
-}))
-
-
-meancv24 <- meancv24[order(as.integer(dataorder-2))]
-threshold20cv24 <- threshold20cv24[order(as.integer(dataorder-2))]
-
-#48h
-
-cvfiles72 <- list.files(pattern = "cv72h")
-
-dataorder <- unlist(strsplit(cvfiles72,split = ".csv"))
-
-dataorder <- as.numeric(unlist(lapply(strsplit(dataorder,split = "_"),'[[',3)))
-
-cvdata72 <- lapply(cvfiles72, read.csv)
-
-meancv72 <- unlist(lapply(cvdata72, function(x){
-  mean(x$cv,na.rm=T)
-}))
-
-threshold20cv72 <- unlist(lapply(cvdata72, function(x){
-  sum(x$cv<20,na.rm = T)/nrow(x)
-}))
-
-
-meancv72 <- meancv72[order(as.integer(dataorder-2))]
-threshold20cv72 <- threshold20cv72[order(as.integer(dataorder-2))]
-
-results_mean_cv <- rbind(meancv24,meancv72)
-results_threshold_cv <- rbind(threshold20cv24,threshold20cv72)
-
-colnames(results_mean_cv) <- as.numeric(sort(dataorder))
-colnames(results_threshold_cv) <- as.numeric(sort(dataorder))
-
-rownames(results_mean_cv) <- c(24,72)
-rownames(results_threshold_cv) <- c(24,72)
-
-#exclusion r2
-
-exclusions_24 <- list.files(pattern = "exclusions_noisepoly")
-
-dataorder <- unlist(strsplit(exclusions_24,split = ".csv"))
-
-dataorder <- as.numeric(unlist(lapply((strsplit(dataorder,split = "=")),"[[",2)))
-
-exclusion_data <- lapply(exclusions_24, read.csv)
-
-sumexclusions <- unlist(lapply(exclusion_data, function(x){
-  sum(x$exclusions,na.rm=T)
-}))
-
-sumexclusions <-  sumexclusions[order(as.integer(dataorder-2))]
-#sumexclusions <- sumexclusions[2:length(sumexclusions)]
-
-matplot(t(results_mean_cv), type = 'l', xaxt = 'n')
-legend('topright', rownames(results_mean_cv), col = seq_along(results_mean_cv), fill = seq_along(results_mean_cv))
-axis(1, at = 1:ncol(results_mean_cv), labels = colnames(results_mean_cv))
-
-matplot(t(results_threshold_cv), type = 'l', xaxt = 'n')
-legend('topright', rownames(results_threshold_cv), col = seq_along(results_threshold_cv), fill = seq_along(results_threshold_cv))
-axis(1, at = 1:ncol(results_threshold_cv), labels = colnames(results_threshold_cv))
-
-matplot(sumexclusions, type = 'l', xaxt = 'n')
-axis(1, at = 1:length(dataorder), labels = sort(dataorder))
-
-#check variability between plate 1 and plate 2
-
-
-#calculate variable GR at 24h
-
-GRwindow <- c(0,1)
-
+data_corrected <- data_corrected[!groups %in% groups_to_exclude,]
 
 #save final outcome
 
@@ -705,4 +545,4 @@ rm(list = ls()[!ls()=="data_corrected"])
 
 setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data")
 
-save(data_corrected, file = "growth_curves.RData")
+save(data_corrected, file = "growth_curves_filtered.RData")
