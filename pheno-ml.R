@@ -1,5 +1,9 @@
 setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data")
 
+####
+#### THIS SCRIPT SHOULD BE USED with pheno-ml branch of tdsR
+###
+
 library(ggplot2)
 library(dplyr)
 
@@ -8,7 +12,7 @@ source("C:\\Users\\masierom\\Downloads\\tdsr-pheno-ml\\fileConversion.R")
 
 phenoDist <- "ACHN_CL3_P1.json"
 
-data <- phenoMLtoCaseB(phenoDist)
+data <- tdsR::phenoMLtoCaseB(phenoDist)
 
 data$concentration <- round(as.numeric(data$concentration), 5)
 
