@@ -256,7 +256,7 @@ for(poly_degree in poly_degree){
   exclusions_noise <- data.frame("plate"=character(),"exclusions"=integer())
   
   base::lapply(names(data_corrected), function(plate_name){
-    
+    #plate_name = "20191106/results/MALME3M_CL1_P2.txt"
     print(plate_name)
     
     data_raw <- data_corrected[[plate_name]]
@@ -279,7 +279,7 @@ for(poly_degree in poly_degree){
         
         #idx_well <- unique(data_raw$Well)[5] #FIXME delete me 
         
-        #idx_well = 'E11'
+        #idx_well = 'E15'
         
         data_well_raw <- subset(data_raw[,c("Time", "Conf", "Well")], Well == idx_well)
         
@@ -289,7 +289,6 @@ for(poly_degree in poly_degree){
         
         model <- get_growthMetrics(data = data_well_raw, degree = poly_degree)
         
-      
         time_12 <- model[[2]][4][which(abs(model[[2]][4] - 12) == min(abs(model[[2]][4] - 12))),]
         
         time_24 <- model[[2]][4][which(abs(model[[2]][4] - 24) == min(abs(model[[2]][4] - 24))),]
@@ -320,7 +319,13 @@ for(poly_degree in poly_degree){
         
         model_well_pred <- predict(model_pred_poly, data.frame(Time = time_sequence))
         
+        if(min(model_well_pred)<1){
+          model_well_pred <- model_well_pred + abs(min(model_well_pred))+1
+        }
+        
+        
         pred_conf <- data.frame(Well = idx_well, Time = time_sequence, Conf = model_well_pred)
+        
         
         pred_conf$GR12 <-         GR_12
         pred_conf$GR24 <-         GR_24
@@ -338,6 +343,7 @@ for(poly_degree in poly_degree){
         
       })
     
+
     # save diagnostic plots
     
     diagnostics_well <- base::do.call(rbind, lapply(fitted_data,  function(x) x[[2]]) ) #for each plate, plot diagnostic plots with the r-squared.. check if any of fits have ploblems
