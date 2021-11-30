@@ -1,18 +1,12 @@
-## This code takes a vector of growth and calculate GI50, the initial parsing of the data is the same as in the GRmetrics packege,
-#  so it will be easier to incorporate later.
-
-
+## This code takes growth curve from large screen and calculate drug metrics, 
 
 # load packages nad definitions -------------------------------------------
 
-
-
 path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
 path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\growth_metrics'
-
 load("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data\\growth_curves_filtered.RData")
 
-library(dplyr); library(tidyr); library(ggplot2);library(gplots)library(RColorBrewer)
+library(dplyr); library(tidyr); library(ggplot2);library(gplots);library(RColorBrewer)
 library(plyr)
 
 devtools::load_all("C:\\Users\\masierom\\polybox\\Programing\\GRmetrics_GI50")
@@ -22,7 +16,7 @@ time_treatment <- 0
 
 drugs_in_screen <- c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO"))]))
 
-# calculate growth inhibition 50 metric -----------------------------------
+# calculate growth inhibition 50 metrics -----------------------------------
 
 #split analysis between plate 1 and plate 2
 
@@ -138,8 +132,7 @@ output_GI50 <- do.call(rbind, output_GI50)
 
 setwd(path_data_file)
 
-write.csv(output_GI50, "outcomes_growth_inhibition.R")
-
+write.csv(output_GI50, "outcomes_growth_inhibition50.csv")
 
 #plot results
 
@@ -191,10 +184,7 @@ heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=1
 dev.off()
 
 
-
 # #calculate percent inhibition for GR24 ----------------------------------
-
-
 
 lapply(c("P1", "P2"), function(plate){ 
   # calculate results by plate
@@ -224,7 +214,7 @@ output_GR24 <- do.call(rbind,output_GR24)
 
 setwd(path_data_file)
 
-write.csv(output_GI50, "outcomes_GR24.R")
+write.csv(output_GR24, "outcomes_GR24.csv")
 
 #plot results
 
@@ -302,6 +292,137 @@ lapply(unique(tmp$Drug), function(drug_idx){
   
   
 })
+
+
+# define groups R/S ----------------------------
+
+#
+
+# remove too strong concentrations, inefficient concentrations
+#define groups based on GR50, drug effect, whether a certain cell_line drug comb is resistnat or sensitive
+
+cutoff_GR_max_growth_effect <- 30 #pairs of drug & conc with abs change < this number will be excluded
+cutoff_GR_min_growth_effect <- 10 #pairs of drug & conc with CV < this number will be excluded
+
+exclusions_min_growth <- output_GR24 %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+
+exclusions_min_growth <-exclusions_min_growth[exclusions_min_growth$variation<=  cutoff_GR_min_growth_effect,]
+
+tmp <- exclusions_min_growth
+
+tmp$variation <- log10(tmp$variation)
+
+tmp <- pivot_wider(tmp, values_from = variation, names_from = Final_conc_uM)
+
+colnames(tmp) <- paste("conc=",colnames(tmp))
+
+tmp_name <- tmp$`conc= Drug`
+
+tmp$`conc= Drug` <- NULL
+
+rownames(tmp) <- tmp_name
+
+exclusions <- ifelse(tmp <= log10(cutoff_GR_min_growth_effect), "off","")
+
+setwd(paste(path_fig, sep = "\\"))
+png(paste("percent_change_GR24_variation.png",sep="_"),height = 1200,width = 1200)
+heatmap.2(as.matrix(tmp), trace="none", key=T,col = rev(RColorBrewer::brewer.pal(n=11, "RdYlBu")), margins=c(16,16),
+          cexRow = 1.5,cexCol = 2.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',cellnote = exclusions,notecol="black",notecex=2)
+dev.off()
+  
+
+filtered_data <- output_GR24 
+
+rows_to_exclude <- paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(exclusions_min_growth$Drug, exclusions_min_growth$Final_conc_uM)
+
+rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
+
+filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
+
+rows_to_exclude <- ifelse(filtered_data$percent_change_GR<=cutoff_GR_max_growth_effect, T, F)
+
+rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
+
+filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
+
+tmp <- filtered_data
+
+
+col_breaks <- seq(0,120,length.out = 10)
+
+col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
+
+lapply(unique(tmp$Drug), function(drug_idx){
+  #plot results by drug
+  
+  #drug_idx = 'BPTES'
+  print(drug_idx)
+  drug_data <- subset(tmp, Drug == drug_idx, select=c(cell, Final_conc_uM, percent_change_GR))
+  
+  if(!all(is.na(drug_data$percent_change_GR))){
+    
+    threshold_high <- ifelse(drug_data$percent_change_GR>120,">120","")
+    text_data <- cbind(drug_data[,c("cell", "Final_conc_uM")], data.frame(threshold_high))
+    
+    drug_data$percent_change_GR <- ifelse(drug_data$percent_change_GR<0,0,drug_data$percent_change_GR)
+    
+    drug_data <- pivot_wider(drug_data, values_from = percent_change_GR, names_from = Final_conc_uM)
+    
+    colnames(drug_data) <- paste("conc=",colnames(drug_data))
+    
+    drug_data <- drug_data[,colSums(is.na(drug_data))<nrow(drug_data)]
+    
+    
+    tmp_name <- drug_data$`conc= cell`
+    
+    drug_data$`conc= cell` <- NULL
+    
+    rownames(drug_data) <- tmp_name
+    
+    if(ncol(drug_data)==1){
+      # create a column of ones so heatmap can be generated
+      
+      drug_data$emptycol<- rep(1,length.out = nrow(drug_data))
+      
+      drug_data <- drug_data[rev(colnames(drug_data))]
+      
+      text_data$emoty_column <- ""
+      
+      text_data <- text_data[rev(colnames(text_data))]
+    }
+    
+    rownames(drug_data) <- tmp_name
+    
+    text_data <- pivot_wider(text_data, values_from = threshold_high, names_from = Final_conc_uM)
+    colnames(text_data) <- paste("conc=",colnames(text_data))
+    text_data <- text_data[,colSums(is.na(text_data))<nrow(text_data)]
+    
+    tmp_name <- text_data$`conc= cell`
+    
+    text_data$`conc= cell` <- NULL
+    
+    rownames(text_data) <- tmp_name
+    
+    
+    setwd(paste(path_fig, sep = "\\"))
+    png(paste("drug=",drug_idx,"percent_change_GR24_filtered.png",sep="_"),height = 1200,width = 1200)
+    
+    heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
+              cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3)
+    dev.off()
+  
+    
+  }
+
+  print(c(a,drug_idx))
+})
+
+
+  
+# create R/S groups based on GR50 results
+# if GR50 is high conc or Inf == resistant
+# if GR50 is low == sensitive
+# if GR50 is intermediate == intermediate?
 
 
 # #calculate tdsR ---------------------------------------------------------
@@ -412,8 +533,7 @@ output_tdsR <- do.call(rbind, output_tdsR)
 
 setwd(path_data_file)
 
-write.csv(output_tdsR, "outcomes_tdsR.R")
-
+write.csv(output_tdsR, "outcomes_tdsR.csv")
 
 #plot results
 
@@ -457,7 +577,7 @@ ggplot(tmp, aes(Time, Conf, col = factor(Final_conc_uM)))+
   geom_point()
 
 
-# #TODO calculate corrected GI50 ------------------------------------------
+# #TODO calculate tdsR-corrected GI50 ------------------------------------------
 #TODO calculate corrected GI50
 
 
