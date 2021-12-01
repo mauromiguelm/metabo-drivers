@@ -296,8 +296,6 @@ lapply(unique(tmp$Drug), function(drug_idx){
 
 # define groups R/S ----------------------------
 
-#
-
 # remove too strong concentrations, inefficient concentrations
 #define groups based on GR50, drug effect, whether a certain cell_line drug comb is resistnat or sensitive
 
@@ -329,7 +327,6 @@ png(paste("percent_change_GR24_variation.png",sep="_"),height = 1200,width = 120
 heatmap.2(as.matrix(tmp), trace="none", key=T,col = rev(RColorBrewer::brewer.pal(n=11, "RdYlBu")), margins=c(16,16),
           cexRow = 1.5,cexCol = 2.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',cellnote = exclusions,notecol="black",notecex=2)
 dev.off()
-  
 
 filtered_data <- output_GR24 
 
@@ -371,7 +368,6 @@ lapply(unique(tmp$Drug), function(drug_idx){
     colnames(drug_data) <- paste("conc=",colnames(drug_data))
     
     drug_data <- drug_data[,colSums(is.na(drug_data))<nrow(drug_data)]
-    
     
     tmp_name <- drug_data$`conc= cell`
     
@@ -416,14 +412,199 @@ lapply(unique(tmp$Drug), function(drug_idx){
 
   print(c(a,drug_idx))
 })
-
-
   
 # create R/S groups based on GR50 results
-# if GR50 is high conc or Inf == resistant
-# if GR50 is low == sensitive
-# if GR50 is intermediate == intermediate?
 
+# check if at least three CLs with one log of difference in GI50, and define R/S groups based on that
+
+variability_GR50 <- subset(output_GI50, !is.infinite(GR50))
+
+variability_GR50 <- variability_GR50 %>% dplyr::group_by(agent) %>% 
+  dplyr::filter(n()>=6) %>%arrange(GR50) %>%
+  dplyr::filter(dplyr::row_number()==3 | dplyr::row_number()==(n()-2)) %>%
+  dplyr::summarise(fc_GR50 = (abs(dplyr::last(GR50)/dplyr::first(GR50))))
+
+variability_GR50$use_GI50_both_groups <- ifelse(groups_GR50$fc_GR50 >=7, TRUE, FALSE)
+
+variability_GR50 <- subset(variability_GR50, use_GI50_both_groups==TRUE)
+
+
+RS_groups_GR50 <- subset(output_GI50, !is.infinite(GR50) & agent %in% variability_GR50$agent)
+
+RS_groups_GR50 <- RS_groups_GR50 %>% dplyr::group_by(agent) %>%
+  arrange(GR50) %>%
+  dplyr::filter(dplyr::row_number()<=3 | dplyr::row_number()>=(n()-2)) %>%
+  dplyr::mutate(group = ifelse(dplyr::row_number()<=3, "S", "R"))%>%
+  ungroup()
+
+resistant_without_fit <- subset(output_GI50, is.infinite(GR50) & agent %in% variability_GR50$agent)
+
+resistant_without_fit$group = "R"
+
+RS_groups_GR50 <- rbind(RS_groups_GR50, resistant_without_fit)
+
+GR24_RSgroups <- subset(filtered_data, Drug %in% unique(RS_groups_GR50$agent))
+
+GR24_RSgroups$idx <- paste(GR24_RSgroups$Drug, GR24_RSgroups$cell)
+
+tmp <- subset(RS_groups_GR50, select= c(cell_line, agent, group))
+
+tmp$idx <- paste(tmp$agent, tmp$cell_line)
+
+GR24_RSgroups <- dplyr::right_join(GR24_RSgroups, tmp, by = "idx")
+
+#plot groups
+
+
+
+col_breaks <- seq(0,120,length.out = 10)
+
+col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
+
+lapply(unique(tmp$Drug), function(drug_idx){
+  #plot results by drug, on data filtered for too strong effects
+  
+  #drug_idx = '17-AAG'
+  print(drug_idx)
+  drug_data <- subset(GR24_RSgroups, Drug == drug_idx, select=c(cell, Final_conc_uM, percent_change_GR))
+  
+  if(!all(is.na(drug_data$percent_change_GR))){
+    
+    text_data <- subset(GR24_RSgroups, Drug == drug_idx, select=c("cell", "Final_conc_uM", 'group'))
+    
+    
+    drug_data$percent_change_GR <- ifelse(drug_data$percent_change_GR<0,0,drug_data$percent_change_GR)
+    
+    drug_data <- pivot_wider(drug_data, values_from = percent_change_GR, names_from = Final_conc_uM)
+    
+    colnames(drug_data) <- paste("conc=",colnames(drug_data))
+    
+    #drug_data <- drug_data[,colSums(is.na(drug_data))<nrow(drug_data)]   
+    
+    tmp_name <- drug_data$`conc= cell`
+    
+    drug_data$`conc= cell` <- NULL
+    
+    rownames(drug_data) <- tmp_name
+    
+    if(ncol(drug_data)==1){
+      # create a column of ones so heatmap can be generated
+      
+      drug_data$emptycol<- rep(1,length.out = nrow(drug_data))
+      
+      drug_data <- drug_data[rev(colnames(drug_data))]
+      
+      text_data$emoty_column <- ""
+      
+      text_data <- text_data[rev(colnames(text_data))]
+    }
+    
+    rownames(drug_data) <- tmp_name
+    
+    text_data <- pivot_wider(text_data, values_from = group, names_from = Final_conc_uM)
+    colnames(text_data) <- paste("conc=",colnames(text_data))
+    #text_data <- text_data[,colSums(is.na(text_data))<nrow(text_data)]
+    
+    tmp_name <- text_data$`conc= cell`
+    
+    text_data$`conc= cell` <- NULL
+    
+    rownames(text_data) <- tmp_name
+    
+    
+    setwd(paste(path_fig, sep = "\\"))
+    png(paste("drug=",drug_idx,"percent_change_GR24_filtered_groups.png",sep="_"),height = 1200,width = 1200)
+    
+    heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
+              cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3)
+    dev.off()
+    
+    
+  }
+  
+  print(c(a,drug_idx))
+})
+
+
+#plot results by drug on data not filtered by too strong effects
+
+GR24_RSgroups_unfiltered <- subset(output_GR24, Drug %in% unique(RS_groups_GR50$agent))
+
+GR24_RSgroups_unfiltered$idx <- paste(GR24_RSgroups_unfiltered$Drug, GR24_RSgroups_unfiltered$cell)
+
+tmp <- subset(RS_groups_GR50, select= c(cell_line, agent, group))
+
+tmp$idx <- paste(tmp$agent, tmp$cell_line)
+
+GR24_RSgroups_unfiltered <- dplyr::left_join(GR24_RSgroups_unfiltered, tmp, by = "idx", keep = T)
+
+
+col_breaks <- seq(0,120,length.out = 10)
+
+col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
+
+lapply(unique(tmp$agent), function(drug_idx){
+  #plot results by drug on data not filtered by too strong effects
+  
+  #drug_idx = '17-AAG'
+  print(drug_idx)
+  drug_data <- subset(GR24_RSgroups_unfiltered, Drug == drug_idx, select=c(cell, Final_conc_uM, percent_change_GR))
+  
+  if(!all(is.na(drug_data$percent_change_GR))){
+    
+    text_data <- subset(GR24_RSgroups_unfiltered, Drug == drug_idx, select=c("cell", "Final_conc_uM", 'group'))
+    
+    
+    drug_data$percent_change_GR <- ifelse(drug_data$percent_change_GR<0,0,drug_data$percent_change_GR)
+    
+    drug_data <- pivot_wider(drug_data, values_from = percent_change_GR, names_from = Final_conc_uM)
+    
+    colnames(drug_data) <- paste("conc=",colnames(drug_data))
+    
+    #drug_data <- drug_data[,colSums(is.na(drug_data))<nrow(drug_data)]   
+    
+    tmp_name <- drug_data$`conc= cell`
+    
+    drug_data$`conc= cell` <- NULL
+    
+    rownames(drug_data) <- tmp_name
+    
+    if(ncol(drug_data)==1){
+      # create a column of ones so heatmap can be generated
+      
+      drug_data$emptycol<- rep(1,length.out = nrow(drug_data))
+      
+      drug_data <- drug_data[rev(colnames(drug_data))]
+      
+      text_data$emoty_column <- ""
+      
+      text_data <- text_data[rev(colnames(text_data))]
+    }
+    
+    rownames(drug_data) <- tmp_name
+    
+    text_data <- pivot_wider(text_data, values_from = group, names_from = Final_conc_uM)
+    colnames(text_data) <- paste("conc=",colnames(text_data))
+    #text_data <- text_data[,colSums(is.na(text_data))<nrow(text_data)]
+    
+    tmp_name <- text_data$`conc= cell`
+    
+    text_data$`conc= cell` <- NULL
+    
+    rownames(text_data) <- tmp_name
+    
+    
+    setwd(paste(path_fig, sep = "\\"))
+    png(paste("drug=",drug_idx,"percent_change_GR24_groups.png",sep="_"),height = 1200,width = 1200)
+    
+    heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
+              cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3)
+    dev.off()
+    
+  }
+  
+  print(c(a,drug_idx))
+})
 
 # #calculate tdsR ---------------------------------------------------------
 
@@ -519,7 +700,6 @@ lapply(c("P1","P2"), function(x){
                   timeTreatment = 0, 
                   smoothData = T,
                   orderConc = T)
-  
   
   return(tmp)
 })-> output_tdsR
