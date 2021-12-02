@@ -426,6 +426,8 @@ variability_GR50 <- variability_GR50 %>% dplyr::group_by(agent) %>%
 
 variability_GR50$use_GI50_both_groups <- ifelse(groups_GR50$fc_GR50 >=7, TRUE, FALSE)
 
+drugs_low_GI50_variability <- subset(variability_GR50, use_GI50_both_groups==FALSE)
+
 variability_GR50 <- subset(variability_GR50, use_GI50_both_groups==TRUE)
 
 
@@ -453,15 +455,42 @@ tmp$idx <- paste(tmp$agent, tmp$cell_line)
 
 GR24_RSgroups <- dplyr::right_join(GR24_RSgroups, tmp, by = "idx")
 
+# calculate GR50 in groups that do not have a high number of cell_drug with defined GR50, or that fcGR50 is low 
+
+RS_groups_GR50_lowvar <- subset(output_GI50, !is.infinite(GR50) & agent %in% drugs_low_GI50_variability$agent)
+
+RS_groups_GR50_lowvar <- RS_groups_GR50_lowvar %>% dplyr::group_by(agent) %>%
+  arrange(GR50) %>%
+  filter(dplyr::row_number()<=3)%>%
+  ungroup()
+
+RS_groups_GR50_lowvar$group <- "S"
+
+resistant_without_fit <- subset(output_GI50, is.infinite(GR50) & agent %in% drugs_low_GI50_variability$agent)
+
+resistant_without_fit$group = "R"
+
+RS_groups_GR50_lowvar <- rbind( RS_groups_GR50_lowvar, resistant_without_fit)
+
+GR24_RSgroups_lowvar <- subset(filtered_data, Drug %in% unique(drugs_low_GI50_variability$agent))
+
+GR24_RSgroups_lowvar$idx <- paste(GR24_RSgroups_lowvar$Drug, GR24_RSgroups_lowvar$cell)
+
+tmp <- subset(RS_groups_GR50_lowvar, select= c(cell_line, agent, group))
+
+tmp$idx <- paste(tmp$agent, tmp$cell_line)
+
+GR24_RSgroups_lowvar <- dplyr::right_join(GR24_RSgroups_lowvar, tmp, by = "idx")
+
+GR24_RSgroups <- rbind(GR24_RSgroups, GR24_RSgroups_lowvar)
+
 #plot groups
-
-
 
 col_breaks <- seq(0,120,length.out = 10)
 
 col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
 
-lapply(unique(tmp$Drug), function(drug_idx){
+lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
   #plot results by drug, on data filtered for too strong effects
   
   #drug_idx = '17-AAG'
@@ -543,7 +572,7 @@ col_breaks <- seq(0,120,length.out = 10)
 
 col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
 
-lapply(unique(tmp$agent), function(drug_idx){
+lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
   #plot results by drug on data not filtered by too strong effects
   
   #drug_idx = '17-AAG'
@@ -605,6 +634,7 @@ lapply(unique(tmp$agent), function(drug_idx){
   
   print(c(a,drug_idx))
 })
+
 
 # #calculate tdsR ---------------------------------------------------------
 
