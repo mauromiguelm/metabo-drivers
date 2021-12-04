@@ -138,7 +138,7 @@ write.csv(output_GI50, "outcomes_growth_inhibition50.csv")
 
 tmp <- subset(data_corrected,Time == 24, select= c('Drug', 'cell', "GR24", "Final_conc_uM"))
 
-tmp <- tmp%>% group_by(cell, Drug, Final_conc_uM) %>% summarise(GR24 = mean(GR24))
+tmp <- tmp%>% dplyr::group_by(cell, Drug, Final_conc_uM) %>% dplyr::summarise(GR24 = mean(GR24))
 
 tmp <- tmp%>% group_by(cell, Drug) %>%
   dplyr::slice(which.max(Final_conc_uM))
@@ -153,7 +153,7 @@ tmp$Drug <- NULL
 
 rownames(tmp) <- tmp_names
 
-setwd(paste(path_fig, sep = "\\"))
+setwd(paste(path_fig,"GR24", sep = "\\"))
 png(paste("GR24",".png",sep="_"),height = 1200,width = 1200)
 heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "PuOr"), margins=c(16,16),
           cexRow = 1.5,cexCol = 1.5,na.color = 'grey', scale = 'col')
@@ -177,7 +177,7 @@ tmp$agent <- NULL
 rownames(tmp) <- tmp_names
 
 
-setwd(paste(path_fig, sep = "\\"))
+setwd(paste(path_fig,"GR50", sep = "\\"))
 png(paste("GR50",".png",sep="_"),height = 1200,width = 1200)
 heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "PiYG"), margins=c(16,16),
           cexRow = 2.0,cexCol = 2.5,na.color = 'grey', scale = 'row',Rowv = 'none',Colv = 'none',keysize=0.75)
@@ -220,27 +220,6 @@ write.csv(output_GR24, "outcomes_GR24.csv")
 
 tmp <- output_GR24
 
-lapply(unique(tmp$cell), function(cell_idx){
-  #plot results by cell
-  #cell_idx = "MDAMB231"
-  cell_data <- subset(tmp, cell == cell_idx, select=c(Drug, Final_conc_uM, percent_change_GR))
-  
-  cell_data <- pivot_wider(cell_data, values_from = percent_change_GR, names_from = Final_conc_uM)
-  colnames(cell_data) <- paste("conc=",colnames(cell_data))
-  
-  tmp_name <- cell_data$`conc= Drug`
-  
-  cell_data$`conc= Drug` <- NULL
-  
-  rownames(cell_data) <- tmp_name
-  
-  setwd(paste(path_fig, sep = "\\"))
-  png(paste(cell_idx,"percent_change_GR24.png",sep="_"),height = 1200,width = 1200)
-  heatmap.2(as.matrix(cell_data), trace="none", key=T,col = (RColorBrewer::brewer.pal(n=11, "RdYlBu")), margins=c(16,16),
-            cexRow = 1.5,cexCol = 2.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none')
-  dev.off()
-})
-
 col_breaks <- seq(0,120,length.out = 10)
 
 col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
@@ -277,9 +256,7 @@ lapply(unique(tmp$Drug), function(drug_idx){
   
   rownames(text_data) <- tmp_name
   
-  
-  
-  setwd(paste(path_fig, sep = "\\"))
+  setwd(paste(path_fig,'RSgroups', sep = "\\"))
   png(paste("drug=",drug_idx,"percent_change_GR24.png",sep="_"),height = 1200,width = 1200)
   heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
             cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3)
@@ -293,9 +270,7 @@ lapply(unique(tmp$Drug), function(drug_idx){
   
 })
 
-
 # define groups R/S ----------------------------
-
 
 # create R/S groups based on GR24 results
 
@@ -345,8 +320,8 @@ rownames(tmp) <- tmp_name
 
 exclusions <- ifelse(tmp <= log10(cutoff_GR_conc_min_CV), "off","")
 
-setwd(paste(path_fig, sep = "\\"))
-png(paste("percent_change_GR24_variation_minCVconc=",as.character(cutoff_GR_conc_min_CV),"max_growth_effect=",as.character(cutoff_GR_max_growth_effect),".png",sep="_"),height = 1200,width = 1200)
+setwd(paste(path_fig,'RSgroups', sep = "\\"))
+png(paste("percent_change_CV.png",sep="_"),height = 1200,width = 1200)
 heatmap.2(as.matrix(tmp), trace="none", key=T,col = rev(RColorBrewer::brewer.pal(n=11, "RdYlBu")), margins=c(16,16),
           cexRow = 1.5,cexCol = 2.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',cellnote = exclusions,notecol="black",notecex=2)
 dev.off()
@@ -423,8 +398,8 @@ lapply(unique(tmp$Drug), function(drug_idx){
     rownames(text_data) <- tmp_name
     
     
-    setwd(paste(path_fig, sep = "\\"))
-    png(paste("drug=",drug_idx,"percent_change_GR24_filtered_minCVconc=",as.character(cutoff_GR_conc_min_CV),"max_growth_effect=",as.character(cutoff_GR_max_growth_effect),".png",sep="_"),height = 1200,width = 1200)
+    setwd(paste(path_fig,'RSgroups', sep = "\\"))
+    png(paste("drug=",drug_idx,"percent_change_GR24_filtered.png",sep="_"),height = 1200,width = 1200)
     
     heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
               cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3)
@@ -433,7 +408,6 @@ lapply(unique(tmp$Drug), function(drug_idx){
     
   }
 
-  print(c(a,drug_idx))
 })
   
 
@@ -443,14 +417,12 @@ col_breaks <- seq(0,120,length.out = 10)
 
 col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
 
-
-
 lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
-  #plot results by drug on data not filtered by too strong effects
+  #plot results by drug on data filtered by too strong effects
   
   #drug_idx = "Clofarabine"
   print(drug_idx)
-  drug_data <- subset(GR24_RSgroups, Drug == drug_idx, select=c(cell, Final_conc_uM, percent_change_GR))
+  drug_data <- subset(tmp, Drug == drug_idx, select=c(cell, Final_conc_uM, percent_change_GR))
   
   if(!all(is.na(drug_data$percent_change_GR))){
     
@@ -513,8 +485,8 @@ lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
       
       #plot Resistant
       
-      setwd(paste(path_fig, sep = "\\"))
-      png(paste("drug=",drug_idx,"_RES_percent_change_GR24_groupCV_filtered_minCVconc=",as.character(cutoff_GR_conc_min_CV),"max_growth_effect=",as.character(cutoff_GR_max_growth_effect),".png",sep="_"),height = 1200,width = 1200)
+      setwd(paste(path_fig,"RSgroups", sep = "\\"))
+      png(paste("drug=",drug_idx,"percent_change_GR24_groupCV_filtered_SEN.png",sep="_"),height = 1200,width = 1200)
       
       heatmap.2(as.matrix(R_group), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
                 cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = R_text,notecol="black",notecex=3)
@@ -522,8 +494,8 @@ lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
       
       #plot Sensitive
       
-      setwd(paste(path_fig, sep = "\\"))
-      png(paste("drug=",drug_idx,"_SEN_percent_change_GR24_groupCV_filtered_minCVconc=",as.character(cutoff_GR_conc_min_CV),"max_growth_effect=",as.character(cutoff_GR_max_growth_effect),".png",sep="_"),height = 1200,width = 1200)
+  
+      png(paste("drug=",drug_idx,"percent_change_GR24_groupCV_filtered_RES.png",sep="_"),height = 1200,width = 1200)
       
       heatmap.2(as.matrix(S_group), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
                 cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = S_text,notecol="black",notecex=3)
