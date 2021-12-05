@@ -515,21 +515,22 @@ GR24_RSgroups_unfiltered <- subset(output_GR24, Drug %in% unique(GR24_RSgroups$D
 
 GR24_RSgroups_unfiltered$idx <- paste(GR24_RSgroups_unfiltered$Drug, GR24_RSgroups_unfiltered$cell)
 
-tmp <- subset(RS_groups_GR50, select= c(cell_line, agent, group))
+tmp <- subset(GR24_RSgroups, select= c(cell, Drug, group))
 
-tmp$idx <- paste(tmp$agent, tmp$cell_line)
+tmp$idx <- paste(tmp$Drug, tmp$cell)
 
-GR24_RSgroups_unfiltered <- dplyr::left_join(GR24_RSgroups_unfiltered, tmp, by = "idx", keep = T)
+tmp <- tmp%>% dplyr::group_by(idx) %>% dplyr::slice(1)
 
+GR24_RSgroups_unfiltered <- dplyr::left_join(GR24_RSgroups_unfiltered, tmp[,c("idx", "group")], by = "idx",keep=F)
 
 col_breaks <- seq(0,120,length.out = 10)
 
 col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
 
-lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
+lapply(unique(GR24_RSgroups_unfiltered$Drug), function(drug_idx){
   #plot results by drug on data not filtered by too strong effects
   
-  #drug_idx = 'Docetaxel'
+  #drug_idx = 'Everolimus'
   print(drug_idx)
   drug_data <- subset(GR24_RSgroups_unfiltered, Drug == drug_idx, select=c(cell, Final_conc_uM, percent_change_GR))
   
@@ -563,6 +564,7 @@ lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
       text_data <- text_data[rev(colnames(text_data))]
     }
     
+    
     rownames(drug_data) <- tmp_name
     
     text_data <- pivot_wider(text_data, values_from = group, names_from = Final_conc_uM)
@@ -582,18 +584,34 @@ lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
     R_idxs <- which(grouping_def == "R")
     S_idxs <- which(grouping_def =="S")
     
-    R_group <- drug_data[R_idxs,]
+    R_group <- data.frame(drug_data[R_idxs,])
     rownames(R_group) <- tmp_name[R_idxs]
     R_text <- text_data[R_idxs,]
-    S_group <- drug_data[S_idxs,]
+    S_group <- data.frame(drug_data[S_idxs,])
     rownames(S_group) <- tmp_name[S_idxs]
     S_text <- text_data[S_idxs,]
+    
+    if(nrow(S_group)==1){
+      # create a column of ones so heatmap can be generated
+      S_group <- rbind(S_group,S_group)
+      S_group[1,] = rep(1, length.out = ncol(S_group)) 
+    }
+    
+    if(nrow(R_group)==1){
+      # create a column of ones so heatmap can be generated
+      R_group <- rbind(R_group,R_group)
+      R_group[1,] = rep(1, length.out = ncol(R_group)) 
+    }
+    
+    
+    rownames(drug_data) <- tmp_name
     
     if(all(c("R", "S") %in% unique(as.character(as.matrix(text_data))))){
       #plot Resistant
       
-      setwd(paste(path_fig, sep = "\\"))
-      png(paste("drug=",drug_idx,"_RES_percent_change_GR24_groups_minCVconc=",as.character(cutoff_GR_conc_min_CV),"max_growth_effect=",as.character(cutoff_GR_max_growth_effect),".png",sep="_"),height = 1200,width = 1200)
+      setwd(paste(path_fig,"RSgroups", sep = "\\"))
+      
+      png(paste("drug=",drug_idx,"percent_change_GR24_groupCV_RES.png",sep="_"),height = 1200,width = 1200)
       
       heatmap.2(as.matrix(R_group), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
                 cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = R_text,notecol="black",notecex=3)
@@ -601,8 +619,8 @@ lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
       
       #plot Sensitive
       
-      setwd(paste(path_fig, sep = "\\"))
-      png(paste("drug=",drug_idx,"_SEN_percent_change_GR24_groups_minCVconc=",as.character(cutoff_GR_conc_min_CV),"max_growth_effect=",as.character(cutoff_GR_max_growth_effect),".png",sep="_"),height = 1200,width = 1200)
+    
+      png(paste("drug=",drug_idx,"percent_change_GR24_groupCV_SEN.png",sep="_"),height = 1200,width = 1200)
       
       heatmap.2(as.matrix(S_group), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
                 cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = S_text,notecol="black",notecex=3)
@@ -613,6 +631,42 @@ lapply(unique(GR24_RSgroups$Drug), function(drug_idx){
     }
       
     }
+})
+
+
+# plot GR50 for each RS group
+
+
+tmp <- subset(filtered_data, !is.na(percent_change_GR))
+tmp <- subset(tmp, select= c(cell, Drug, group))
+
+tmp$experiment <- paste(tmp$cell,tmp$Drug)
+
+tmp <- tmp%>% dplyr::group_by(experiment) %>% dplyr::slice(1)
+
+tmp <- output_GI50%>%dplyr::inner_join(tmp,by='experiment' )
+
+lapply(unique(tmp$agent), function(drug_idx){
+  
+  drug_data <- subset(tmp, Drug == drug_idx)
+  
+  drug_data$group <- factor(drug_data$group, levels=c("R", "I", "S"))
+  
+  setwd(paste(path_fig,"RSgroups", sep = "\\"))
+  
+  nonEdgy_trans <- function(){   scales::trans_new("nonEdgy",                     transform = function(x) {ifelse(is.finite(x), x, sign(x) * 6)},                     inverse = function(x) {ifelse(abs(x) == 6, sign(x) * Inf, x)}                     ) }
+  
+  plt <- ggplot(drug_data,aes(group, log10(GR50)))+
+    geom_jitter(aes(colour = ifelse(!is.finite(GR50), 
+                      "Infinite point", 'defined metrix')),
+                width = 0.18)+
+    scale_y_continuous(trans = "nonEdgy")+
+    theme_light()+
+    labs(colour="GR50 undefined")
+  
+  ggsave(paste("drug=",drug_idx,"grouping_by_GR50.png",sep="_"),plt,width = 6,height = 3)
+  
+  
 })
 
 # #calculate tdsR ---------------------------------------------------------
