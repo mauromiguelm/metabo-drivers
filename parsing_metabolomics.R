@@ -1,12 +1,14 @@
 ## This code imports and clean metabolomics data
 
-# load packages nad definitions -------------------------------------------
+# load packages and definitions -------------------------------------------
 
 path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
 path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\metabolomics'
 path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
 library(openxlsx)
+library(dplyr)
+library(rhdf5)
 source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\plate_converter.R")
 
 #import drug source plate map
@@ -26,6 +28,8 @@ source_plates$batch <- ifelse(grepl(pattern = "20190513", source_plates$filename
 setwd("..")
 
 tmp <- read.xlsx("Description.xlsx")
+
+tmp <- tmp[4:nrow(tmp),] #remove experiments that had problems with automatic liquid transfer
 
 source_plates$uniqueID <- NA
 
@@ -49,61 +53,164 @@ msp2 <- grepl(pattern = "2MSP", x = source_plates$sourceid)
 
 source_plates$uniqueID[msp2] <- tmp$source2[msp2]
 
+#removed unused source plates
+
+source_plates <- source_plates[7:nrow(source_plates),]
+
 rm(tmp, msp1, msp2)
 
 #import drug source plate exceptions
 
 source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\exceptions\\log_processing.r")
 
-#import metabolomics data
+# #import metabolomics data -----------------------------------------------
 
 setwd(path_metabolomics_in)
 
-# # map 96wp metabolomics to 384 source -----------------------------------
-#each 384 plate has four 96 source plates, to a total of 8x 96 well plates
-#used for metabolomics
+dataContent<- h5ls("metabolomics_raw.h5")
 
+metadata <- rhdf5::h5read(file = "metabolomics_raw.h5", 'samples/name')
 
-# #remove echo problems ---------------------------------------------------
-#remove wells that we had problems with drug transfer from echo pipetting
+metadata <- strsplit(metadata, "_")
 
+metadata <- data.frame(do.call(rbind, metadata))
+metadata$X3 <- NULL
+colnames(metadata) <- c('injseq', 'source_plate','well384','well96','cell','drug',"conc")
 
+# # remove controls  ------------------------------------------------------
+
+#remove samples used to equilibrate system
+metadata <- metadata[!grepl('burnin',metadata$cell),]
+
+#remove samples used as batch controls
+metadata <- metadata[!grepl('hct15Mtx',metadata$drug)& !grepl('poolCtrl',metadata$drug) & !grepl('hct15Ctrl',metadata$drug) & !grepl('SolvCrtl',metadata$drug),]
 
 # # correct pipetting mistakes that can be corrected ----------------------
 #when transfering source plate to 96 wp, there were a few pipetting mistakes
 #all pipetting mistakes were recorded and can now be corrected
 
-
-#SF539	mistake intra data 384 H1 on P2Q3 row H of all CLs and 384
+#SF539, IGROV1, MDAMB231: mistake intra data 384 H1 on P2Q3 row H of all CLs and 384
 #P1 on P2Q3 row D of all CLs instead of original layout due to pipetting mistake
 
-#TODO
+#define which rows should be switched as a function
 
-#IGROV1	mistake intra data 384 H1 on P2Q3 row H of all CLs and 384
-#P1 on P2Q3 row D of all CLs instead of original layout due to pipetting mistake; 
+switch_row <- function(cell, plate,row_flip1, row_flip2, cols){
+  grouping <- paste(metadata$cell, metadata$source_plate,metadata$well384)
+  
+  wells_flip1 <- paste0(c(row_flip1), rep(cols, each = 1))
+  
+  wells_flip1 <- paste(cell, plate,wells_flip1)
+  
+  idx_flip1 <- sapply(wells_flip1, function(x){which(grouping == x)})
+  
+  wells_flip2 <- paste0(c(row_flip2), rep(cols, each = 1))
+  
+  wells_flip2 <- paste(cell, plate,wells_flip2)
+  
+  idx_flip2 <- sapply(wells_flip2, function(x){which(grouping == x)})
+  
+  save_data_flip1 <- lapply(idx_flip1, function(x) metadata[x,2:7])
+  
+  save_data_flip2 <- lapply(idx_flip2, function(x) metadata[x,2:7])
+  
+  for(idx in 1:length(idx_flip2)){
+    #idx = 2
+    metadata[idx_flip2[[idx]],2:7] <- save_data_flip1[[idx]]
+    
+    metadata[idx_flip1[[idx]],2:7] <- save_data_flip2[[idx]]
+    }
+  }
 
-#TODO
+#apply fix to each cell line
 
-#MDAMB231	mistake intra data 384 H1 on P2Q3 row H of all CLs and 384 P1
-#on P2Q3 row D of all CLs instead of original layout due to pipetting mistake
-
-#TODO
-
-#HOP62	metabolomics: hop62 p1-q1:q4, A1 is H12, front == end
-
-#TODO flip plates completely
+switch_row('SF529',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
+switch_row('IGROV1',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
+switch_row('MDAMB231',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
 
 #COLO205	metabolomics: colo 205 cl3_p2_q1 row f on e and e on f
 
-#TODO switch rows 
+switch_row('COLO205',plate = "P2",row_flip1 = "F",row_flip2 = "E",cols = seq(1,24,2))
 
+#HOP62	metabolomics: hop62 p1-q1:q4, A1 is H12, front == end
 
-# # remove pipetting mistakes that cannot be corrected  -------------------
+invert_plate <- function(cell,plate, wells){
+  
+  grouping <- paste(metadata$cell, metadata$source_plate,metadata$well384)
+  
+  wells <- paste(cell, plate, wells)
+  
+  well_matrix <- matrix(wells, ncol = 12,byrow = T)
+  
+  well_matrix_rev <- well_matrix
 
+  rotate <- function(x) t(apply(x, 2, rev))
+  
+  well_matrix_rev <- t(rotate(well_matrix_rev))
+  
+  well_matrix_rev <- well_matrix_rev[,rev(1:ncol(well_matrix_rev))]
+  
+  for(idx in 1:(dim(well_matrix)[1]*dim(well_matrix)[2])){
+    
+    idx_flip1 <- which(grouping == well_matrix[idx])
+    idx_flip2 <- which(grouping == well_matrix_rev[idx])
+    
+    save_data_flip1 = metadata[idx_flip1,2:7]
+    save_data_flip2 = metadata[idx_flip2,2:7]
+    
+    if(nrow(save_data_flip2)==0){
+      metadata[idx_flip1,2:7] <- NA
+    }else{
+      metadata[idx_flip1,2:7] <- save_data_flip2
+    }
+    
+    if(nrow(save_data_flip1)==0){
+      metadata[idx_flip2,2:7] <- NA
+    }else{
+      metadata[idx_flip2,2:7] <- save_data_flip1
+    }
+  }
+}
 
-# # filter ions based on CV -----------------------------------------------
+invert_plate(cell = "HOP62",plate = "P1",wells = paste0(rep(LETTERS[1:16][c(T,F)], each = 12), seq(1,24,2)))
 
-# # filter samples based on CV --------------------------------------------
+# #remove echo problems ---------------------------------------------------
+#remove wells that we had problems with drug transfer from echo pipetting
 
+metadata$cell_plate <- paste(metadata$cell,metadata$source_plate)
+source_plates$cell_plate <- unlist(lapply(strsplit(source_plates$filenames,"/"),"[[",3))
+
+source_plates$cell_plate <- unlist(lapply(strsplit(source_plates$cell_plate,".txt"),"[[",1))
+
+source_plates$cell_plate <- unlist(lapply(strsplit(source_plates$cell_plate,"_"),function(x){paste(x[[1]],x[[3]])}))
+
+exception_wells <- exceptions[[2]]
+
+exception_wells$DrugNameTransferError <- gsub(",",";",exception_wells$DrugNameTransferError)
+
+as.data.frame(do.call(rbind, apply(exception_wells, 1, function(x) {
+  do.call(expand.grid, strsplit(x, ","))
+}))) -> exception_wells
+
+exception_wells$source_well <- paste(exception_wells$cellPlateBC, exception_wells$WellNameTransferError)
+
+metadata <- metadata %>% dplyr::right_join(source_plates[,c('uniqueID','cell_plate')], by = 'cell_plate')
+
+metadata$source_well <- paste(metadata$uniqueID,metadata$well384)
+
+exclusions_report <- subset(exception_wells, cellPlateBC%in% unique(metadata$uniqueID))
+
+#these exclusions were already removed when measuring metabolomics, but report anyways
+metadata <- subset(metadata, !source_well %in% unique(exclusions_report$source_well))
+
+setwd(path_data_file)
+
+write.csv(exclusions_report, 'exclusion_report_automatic_pipetting_error.csv')
 
 #export results
+
+setwd(paste(path_data_file,'metabolomics', sep = "//"))
+
+write.csv(metadata,"metadata_clean.csv")
+
+
+
