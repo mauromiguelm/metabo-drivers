@@ -4,7 +4,7 @@ library(ggplot2); library(RColorBrewer)
 
 # Importing plate times ####  
 
-source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\analysis\\time_analysis.R")
+source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\analysis\\main_screen\\time_analysis.R")
 
 # import functions cell culture #####
 
@@ -43,10 +43,13 @@ source_plates$sourceid <- ifelse(grepl(pattern = "P1", source_plates$filenames),
 
 source_plates$batch <- ifelse(grepl(pattern = "20190513", source_plates$filenames), "batch_1", "batch_2")
 
+source_plates <- source_plates[source_plates$batch=='batch_2',] #removing batch_1 which robot broke causing many errors
+
 setwd("..")
 
-tmp <- read.xlsx("Description.xlsx")
+tmp <- read.xlsx("Description.xlsx") #removing batch_1 which robot broke causing many errors
 
+tmp <- tmp[4:nrow(tmp),] 
 source_plates$uniqueID <- NA
 
 cell <- strsplit(x = as.character(source_plates$filenames), split = "/")
@@ -479,14 +482,14 @@ for(poly_degree in poly_degree){
     
     lapply(names(data_corrected), function(x){
       
-      #x = "20191106/results/LOXIMVI_CL2_P1.txt"
+      #x = "20191204/results/HCT15_CL3_P2.txt"
       
       source_id <- unlist(subset(source_plates, filenames == x, uniqueID))
       
       exception_wells <- subset(exceptions[[2]], cellPlateBC  == source_id, WellNameTransferError, drop = T)
       
       exception_wells <-  unlist(strsplit(exception_wells, split = ","))
-      
+
       tmp_data <- data_corrected[[x]]
       
       tmp_data[(tmp_data$Well %in% exception_wells), c("Drug")] <- c("exception")
