@@ -77,6 +77,8 @@ metadata <- data.frame(do.call(rbind, metadata))
 metadata$X3 <- NULL
 colnames(metadata) <- c('injseq', 'source_plate','well384','well96','cell','drug',"conc")
 
+metadata$idx <- 1:nrow(metadata)
+
 # # remove controls  ------------------------------------------------------
 
 #remove samples used to equilibrate system
@@ -92,86 +94,19 @@ metadata <- metadata[!grepl('hct15Mtx',metadata$drug)& !grepl('poolCtrl',metadat
 #SF539, IGROV1, MDAMB231: mistake intra data 384 H1 on P2Q3 row H of all CLs and 384
 #P1 on P2Q3 row D of all CLs instead of original layout due to pipetting mistake
 
-#define which rows should be switched as a function
-
-switch_row <- function(cell, plate,row_flip1, row_flip2, cols){
-  grouping <- paste(metadata$cell, metadata$source_plate,metadata$well384)
-  
-  wells_flip1 <- paste0(c(row_flip1), rep(cols, each = 1))
-  
-  wells_flip1 <- paste(cell, plate,wells_flip1)
-  
-  idx_flip1 <- sapply(wells_flip1, function(x){which(grouping == x)})
-  
-  wells_flip2 <- paste0(c(row_flip2), rep(cols, each = 1))
-  
-  wells_flip2 <- paste(cell, plate,wells_flip2)
-  
-  idx_flip2 <- sapply(wells_flip2, function(x){which(grouping == x)})
-  
-  save_data_flip1 <- lapply(idx_flip1, function(x) metadata[x,2:7])
-  
-  save_data_flip2 <- lapply(idx_flip2, function(x) metadata[x,2:7])
-  
-  for(idx in 1:length(idx_flip2)){
-    #idx = 2
-    metadata[idx_flip2[[idx]],2:7] <- save_data_flip1[[idx]]
-    
-    metadata[idx_flip1[[idx]],2:7] <- save_data_flip2[[idx]]
-    }
-  }
-
 #apply fix to each cell line
 
-switch_row('SF529',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
-switch_row('IGROV1',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
-switch_row('MDAMB231',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
+metadata = switch_row(data = metadata,'SF529',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
+metadata = switch_row(data = metadata,'IGROV1',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
+metadata = switch_row(data = metadata,'MDAMB231',plate = "P2",row_flip1 = "H",row_flip2 = "P",cols = seq(1,24,2))
 
 #COLO205	metabolomics: colo 205 cl3_p2_q1 row f on e and e on f
 
-switch_row('COLO205',plate = "P2",row_flip1 = "F",row_flip2 = "E",cols = seq(1,24,2))
+metadata = switch_row(metadata, 'COLO205',plate = "P2",row_flip1 = "F",row_flip2 = "E",cols = seq(1,24,2))
 
 #HOP62	metabolomics: hop62 p1-q1:q4, A1 is H12, front == end
 
-invert_plate <- function(cell,plate, wells){
-  
-  grouping <- paste(metadata$cell, metadata$source_plate,metadata$well384)
-  
-  wells <- paste(cell, plate, wells)
-  
-  well_matrix <- matrix(wells, ncol = 12,byrow = T)
-  
-  well_matrix_rev <- well_matrix
-
-  rotate <- function(x) t(apply(x, 2, rev))
-  
-  well_matrix_rev <- t(rotate(well_matrix_rev))
-  
-  well_matrix_rev <- well_matrix_rev[,rev(1:ncol(well_matrix_rev))]
-  
-  for(idx in 1:(dim(well_matrix)[1]*dim(well_matrix)[2])){
-    
-    idx_flip1 <- which(grouping == well_matrix[idx])
-    idx_flip2 <- which(grouping == well_matrix_rev[idx])
-    
-    save_data_flip1 = metadata[idx_flip1,2:7]
-    save_data_flip2 = metadata[idx_flip2,2:7]
-    
-    if(nrow(save_data_flip2)==0){
-      metadata[idx_flip1,2:7] <- NA
-    }else{
-      metadata[idx_flip1,2:7] <- save_data_flip2
-    }
-    
-    if(nrow(save_data_flip1)==0){
-      metadata[idx_flip2,2:7] <- NA
-    }else{
-      metadata[idx_flip2,2:7] <- save_data_flip1
-    }
-  }
-}
-
-invert_plate(cell = "HOP62",plate = "P1",wells = paste0(rep(LETTERS[1:16][c(T,F)], each = 12), seq(1,24,2)))
+metadata = invert_plate(data = metadata, cell = "HOP62",plate = "P1",wells = paste0(rep(LETTERS[1:16][c(T,F)], each = 12), seq(1,24,2)))
 
 # #remove echo problems ---------------------------------------------------
 #remove wells that we had problems with drug transfer from echo pipetting
