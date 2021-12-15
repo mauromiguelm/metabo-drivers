@@ -270,6 +270,96 @@ lapply(unique(tmp$Drug), function(drug_idx){
   
 })
 
+
+# #calculate percent inhibition for confluence ----------------------------------
+
+lapply(c("P1", "P2"), function(plate){ 
+  # calculate results by plate
+  #plate = "P1"
+  tmp <- subset(data_corrected, Time >=0 & source_plate == plate, select = c("Conf",'Time',"Drug", "cell", "Final_conc_uM", "source_plate")) #keep one time point with GR24.. all time points have the same value..
+  
+  tmp <- tmp %>% 
+    dplyr::group_by(Drug, cell,Final_conc_uM,Time) %>% 
+    dplyr::summarise(median_conf = median(Conf))
+  
+  tmp <- tmp%>% dplyr::group_by(cell,Drug,Time)%>% dplyr::arrange(Final_conc_uM) %>% dplyr::mutate(Final_conc_uM = sequence(n()))
+  
+  tmp$cell_time <- paste(tmp$cell, tmp$Time)
+  
+  control <- subset(tmp, Drug == "DMSO")
+  
+  drug <- subset(tmp, Drug %in% drugs_in_screen)
+  
+  tmp <- dplyr::right_join(drug, control[,c("cell_time", "median_conf")], by = "cell_time")
+  
+  tmp$percent_change_GR <- (tmp$median_conf.x/tmp$median_conf.y) *100
+  
+  return(tmp)
+})-> output_conf
+
+output_conf <- do.call(rbind,output_conf)
+
+# save output 
+
+setwd(path_data_file)
+
+write.csv(output_conf, "outcomes_conf_change_to_control.csv")
+
+#plot results
+
+tmp <- output_GR24
+
+col_breaks <- seq(0,120,length.out = 10)
+
+col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
+
+lapply(unique(tmp$Drug), function(drug_idx){
+  #plot results by drug
+  drug_data <- subset(tmp, Drug == drug_idx, select=c(cell, Final_conc_uM, percent_change_GR))
+  
+  threshold_low <- ifelse(drug_data$percent_change_GR<0,"<0","")
+  
+  threshold_high <- ifelse(drug_data$percent_change_GR>120,">120","")
+  text_data <- cbind(drug_data[,c("cell", "Final_conc_uM")], data.frame(threshold_high))
+  
+  text_data$threshold_high <- paste0(text_data$threshold_high, threshold_low)
+  
+  drug_data$percent_change_GR <- ifelse(drug_data$percent_change_GR<0,0,drug_data$percent_change_GR)
+  
+  drug_data <- pivot_wider(drug_data, values_from = percent_change_GR, names_from = Final_conc_uM)
+  colnames(drug_data) <- paste("conc=",colnames(drug_data))
+  
+  tmp_name <- drug_data$`conc= cell`
+  
+  drug_data$`conc= cell` <- NULL
+  
+  rownames(drug_data) <- tmp_name
+  
+  
+  text_data <- pivot_wider(text_data, values_from = threshold_high, names_from = Final_conc_uM)
+  colnames(text_data) <- paste("conc=",colnames(text_data))
+  
+  tmp_name <- text_data$`conc= cell`
+  
+  text_data$`conc= cell` <- NULL
+  
+  rownames(text_data) <- tmp_name
+  
+  setwd(paste(path_fig,'RSgroups', sep = "\\"))
+  png(paste("drug=",drug_idx,"percent_change_GR24.png",sep="_"),height = 1200,width = 1200)
+  heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
+            cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3)
+  dev.off()
+  
+  png(paste("drug=",drug_idx,"percent_change_GR24_cluster.png",sep="_"),height = 1200,width = 1200)
+  heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
+            cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3,Colv='none')
+  dev.off()
+  
+  
+})
+
+
 # define groups R/S ----------------------------
 
 # create R/S groups based on GR24 results
