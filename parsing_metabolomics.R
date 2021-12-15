@@ -145,7 +145,8 @@ write.csv(exclusions_report, 'exclusion_report_automatic_pipetting_error.csv')
 
 setwd(paste(path_data_file,'metabolomics', sep = "//"))
 
-write.csv(metadata,"metadata_clean.csv")
+write.csv(metadata[,c("idx","injseq","source_plate", "well384", "well96", "cell",
+                      "drug","conc")],"metadata_clean.csv")
 
 
 
