@@ -32,14 +32,14 @@ metadata$cell_plate <- paste(metadata$cell, metadata$source_plate, metadata$quad
 
 lapply(unique(metadata$cell_plate), function(cell_plate_idx){
   #subset metadata to  drug & control groups
-  #cell_plate_idx = 'MDAMB231 P1'
-  #TODO isolate control by 96wp, now they are grouped in a large batch of 384
   print(cell_plate_idx)
   results_list <- list()
   
   tmp <- subset(metadata, cell_plate == cell_plate_idx, select = c("idx","drug", "cell", "conc", "source_plate")) #keep one time point with GR24.. all time points have the same value..
   
   tmp_control <- subset(tmp, drug == "DMSO")
+  
+  print(paste("dimention of control vector =",dim(tmp_control)))
   
   tmp_drug <- subset(tmp, drug %in% drugs_in_screen)
   
@@ -69,6 +69,7 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 
 list <- unlist(metab_fcs, recursive = FALSE)
 list <- unlist(list, recursive = FALSE)
+
 data <- do.call(rbind, list)
 
 
