@@ -80,8 +80,6 @@ setwd("./growthData")
 
 fileNames <- as.character(source_plates$filenames)
 
-fileNames<- fileNames[7:length(fileNames)] #remove CLs that do not have plate 2
-
 data <- 
   
   lapply(fileNames, function(x) {
@@ -536,7 +534,7 @@ for(poly_degree in poly_degree){
 
 data_drugs <- subset(data_corrected,!Drug %in% c("PBS","DMSO") & Time == 24)
 
-exclusions_reps <- data_drugs %>% group_by(cell, Drug, Final_conc_uM) %>% summarise(nreps = n())
+exclusions_reps <- data_drugs %>% group_by(cell, Drug, Final_conc_uM) %>% dplyr::summarise(nreps = n())
 
 exclusions_reps <- subset(exclusions_reps, nreps <3)
 
