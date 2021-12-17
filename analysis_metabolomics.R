@@ -16,20 +16,37 @@ setwd(path_metabolomics_in)
 
 dataContent<- h5ls("metabolomics_raw.h5")
 
+data<- rhdf5::h5read(file = "metabolomics_raw.h5", '/data')
+
 setwd(paste(path_data_file,'metabolomics', sep = "//"))
 
 metadata <- read.csv("metadata_clean.csv")
 
-data<- rhdf5::h5read(file = "metabolomics_raw.h5", '/data')
-
 drugs_in_screen <- c(unique(metadata$drug)[!(unique(metadata$drug) %in% c("PBS", "DMSO"))])
 
+# calculating log2(FCs) for all data and for every drug.  --------
 
-# # Correlation of FCS for all data and for every drug. See if we  --------
+#define 96 well plates within each 384 wp
+#P1-Q1 to P1-Q4 
+
+quadrant_map <- lapply(1:4,get_quadrant_wells)
+
+quadrant_map <- do.call(rbind,quadrant_map)
+
+lapply(unique(metadata$source_plate), function(plate_idx){
+  #plate_idx = "P1"
+  tmp <- subset(metadata, source_plate == plate_idx)
+  
+  tmp <- merge(tmp, quadrant_map[,c("well384",'quadrant')], by = "well384")
+  
+  return(tmp)
+  
+})
+
+#iterating over plates, cells, drug, and conc to calculate FCs
 
 metadata$cell_plate <- paste(metadata$cell, metadata$source_plate)
 
-#define plate groups
 
 lapply(unique(metadata$cell_plate), function(cell_plate_idx){
   #subset metadata to  drug & control groups
