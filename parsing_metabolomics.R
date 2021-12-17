@@ -141,6 +141,25 @@ setwd(path_data_file)
 
 write.csv(exclusions_report, 'exclusion_report_automatic_pipetting_error.csv')
 
+#define 96 well plates within each 384 wp
+#P1-Q1 to P1-Q4 
+
+quadrant_map <- lapply(1:4,get_quadrant_wells)
+
+quadrant_map <- do.call(rbind,quadrant_map)
+
+lapply(unique(metadata$source_plate), function(plate_idx){
+  #plate_idx = "P1"
+  tmp <- subset(metadata, source_plate == plate_idx)
+  
+  tmp <- merge(tmp, quadrant_map[,c("well384",'quadrant')], by = "well384")
+  
+  return(tmp)
+  
+}) -> metadata
+
+metadata <- do.call(rbind, metadata)
+
 #export results
 
 setwd(paste(path_data_file,'metabolomics', sep = "//"))
