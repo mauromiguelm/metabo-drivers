@@ -165,7 +165,7 @@ metadata <- do.call(rbind, metadata)
 setwd(paste(path_data_file,'metabolomics', sep = "//"))
 
 write.csv(metadata[,c("idx","injseq","source_plate", "well384", "well96", "cell",
-                      "drug","conc")],"metadata_clean.csv")
+                      "drug","conc",'quadrant')],"metadata_clean.csv")
 
 
 

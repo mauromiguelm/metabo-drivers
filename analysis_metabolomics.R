@@ -18,6 +18,10 @@ dataContent<- h5ls("metabolomics_raw.h5")
 
 data<- rhdf5::h5read(file = "metabolomics_raw.h5", '/data')
 
+ions <- rhdf5::h5read(file = "metabolomics_raw.h5", '/annotation')
+
+ions <- data.frame(ions)
+
 setwd(paste(path_data_file,'metabolomics', sep = "//"))
 
 metadata <- read.csv("metadata_clean.csv")
@@ -28,14 +32,15 @@ drugs_in_screen <- c(unique(metadata$drug)[!(unique(metadata$drug) %in% c("PBS",
 
 #iterating over plates, cells, drug, and conc to calculate FCs
 
-metadata$cell_plate <- paste(metadata$cell, metadata$source_plate, metadata$quadrant)
+metadata$cell_plate <- paste(metadata$cell, metadata$source_plate)
 
 lapply(unique(metadata$cell_plate), function(cell_plate_idx){
   #subset metadata to  drug & control groups
+  #cell_plate_idx <- unique(metadata$cell_plate)[1]
   print(cell_plate_idx)
   results_list <- list()
   
-  tmp <- subset(metadata, cell_plate == cell_plate_idx, select = c("idx","drug", "cell", "conc", "source_plate")) #keep one time point with GR24.. all time points have the same value..
+  tmp <- subset(metadata, cell_plate == cell_plate_idx, select = c("idx","drug", "cell", "conc", "source_plate",'quadrant')) #keep one time point with GR24.. all time points have the same value..
   
   tmp_control <- subset(tmp, drug == "DMSO")
   
@@ -52,26 +57,51 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
   lapply(drug_conc, function(drug_conc_idx){
     #iterate over each drug_conc
     
-    tmp_drug_conc <- subset(tmp_drug,drug_conc == drug_conc_idx)
-
-    lapply(1:nrow(data), function(metab_idx){
-      #metab_idx = 1
-      drug_metab <- median(data[metab_idx,tmp_drug_conc$idx])
-      control_metab <- median(data[metab_idx,tmp_control$idx])
-      return(list(paste(cell_plate_idx,drug_conc_idx, metab_idx), log2(drug_metab/control_metab)))
-    }) -> results
+  tmp_drug_conc <- subset(tmp_drug,drug_conc == drug_conc_idx)
     
-    results_list <- append(results_list,results)
+    if(nrow(tmp_drug_conc)>0){
+      
+      lapply(1:nrow(data), function(metab_idx){
+        #metab_idx = 1
+        
+        drug_metab <- data.frame("intensity"= data[metab_idx,tmp_drug_conc$idx])
+        
+        drug_metab$Group.1 <- tmp_drug_conc$quadrant
+        
+        control_metab <- aggregate(data[metab_idx,tmp_control$idx], by = list(tmp_control$quadrant),median)
+        
+        drug_fcs <- merge(drug_metab, control_metab, by = 'Group.1')
+    
+        drug_fcs <- log2(drug_fcs[,2]/ drug_fcs[,3])
+        
+        p_value <- t.test(drug_fcs, mu =0)$p.value
+        
+        return(list(paste(cell_plate_idx,drug_conc_idx, metab_idx), median(drug_fcs), p_value))
+      })-> results
+      
+      return(results)
+      
+    }
+
     
   })
-  return(results_list)
 }) -> metab_fcs
 
-list <- unlist(metab_fcs, recursive = FALSE)
-list <- unlist(list, recursive = FALSE)
+metab_fcs <- unlist(metab_fcs, recursive = FALSE)
+metab_fcs <- unlist(metab_fcs, recursive = FALSE)
+metab_fcs <- do.call(rbind, metab_fcs)
 
-data <- do.call(rbind, list)
+metab_fcs <- data.frame(metab_fcs)
 
+metab_fcs[,1] <- unlist(metab_fcs[,1],recursive = T)
+metab_fcs[,2] <- unlist(metab_fcs[,2],recursive = T)
+
+lapply(unique(metadata$cell), function(cell_idx){
+  #save data by cell line
+  cell_idx = "MDAMB231"
+  tmp <- subset(metab_fcs, grepl(cell_idx,metab_fcs[,1])) 
+  
+})
 
 # Compare metabolomics results for R/Sgroups, and see which one is better
 # check which metabolites are driving the correlation, hopefully positive controls
