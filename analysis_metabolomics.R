@@ -11,6 +11,13 @@ library(openxlsx)
 library(dplyr)
 library(rhdf5)
 
+#import drug sensitity metrics
+
+setwd(path_data_file)
+
+data_GR50 <- read.csv("outcomes_growth_inhibition50.csv")
+
+#import metabolomics 
 
 setwd(path_metabolomics_in)
 
@@ -24,7 +31,12 @@ ions <- data.frame(ions)
 
 setwd(paste(path_data_file,'metabolomics', sep = "//"))
 
+#import cleaned metadata
+
 metadata <- read.csv("metadata_clean.csv")
+
+
+#define drugs from controls
 
 drugs_in_screen <- c(unique(metadata$drug)[!(unique(metadata$drug) %in% c("PBS", "DMSO"))])
 
@@ -32,16 +44,15 @@ drugs_in_screen <- c(unique(metadata$drug)[!(unique(metadata$drug) %in% c("PBS",
 
 #iterating over plates, cells, drug, and conc to calculate FCs
 
-metadata$cell_plate <- paste(metadata$cell, metadata$source_plate)
+metadata$cell_plate <- paste(metadata$cell, metadata$source_plate, sep = "_")
 
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 
-lapply(unique(metadata$cell_plate), function(cell_plate_idx){
+lapply(unique(metadata$cell_plate)[c(1,22)], function(cell_plate_idx){
   #subset metadata to  drug & control groups
   #cell_plate_idx <- unique(metadata$cell_plate)[1]
   if (!any(grepl(cell_plate_idx,x=list.files()))){
-    cell_plate_idx
     print(cell_plate_idx)
     results_list <- list()
     
@@ -53,15 +64,15 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
     
     tmp_drug <- subset(tmp, drug %in% drugs_in_screen)
     
-    tmp_drug$drug_conc <- paste(tmp_drug$drug, tmp_drug$conc)
+    tmp_drug$drug_conc <- paste(tmp_drug$drug, tmp_drug$conc, sep = "_")
     
     #for each drug and concentration, calculate fold changes to control
     
-    drug_conc <- unique(paste(tmp_drug$drug, tmp_drug$conc))
+    drug_conc <- unique(paste(tmp_drug$drug, tmp_drug$conc, sep = "_"))
     #drug_conc_idx <- "Irinotecan 0.11"
     lapply(drug_conc, function(drug_conc_idx){
       #iterate over each drug_conc
-      
+      #drug_conc_idx <- drug_conc[1]
       tmp_drug_conc <- subset(tmp_drug,drug_conc == drug_conc_idx)
       
       if(nrow(tmp_drug_conc)>0){
@@ -81,7 +92,7 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
           
           p_value <- t.test(drug_fcs, mu =0)$p.value
           
-          return(list(paste(cell_plate_idx,drug_conc_idx, metab_idx), median(drug_fcs), p_value))
+          return(list(paste(cell_plate_idx,drug_conc_idx, metab_idx, sep ="_"), median(drug_fcs), p_value))
         })-> results
         
         return(results)
@@ -96,7 +107,7 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
     
     metab_fcs <- data.frame(metab_fcs)
     
-    metab_fcs<- cbind(data.frame(stringr::str_split_fixed(string = metab_fcs[,1]," ",n = 5)),metab_fcs[,2:3])
+    metab_fcs<- cbind(data.frame(stringr::str_split_fixed(string = metab_fcs[,1],"_",n = 5)),metab_fcs[,2:3])
     
     metab_fcs[,6] <- as.numeric(metab_fcs[,6])
     metab_fcs[,7] <- as.numeric(metab_fcs[,7])
@@ -123,26 +134,44 @@ metab_fcs <- lapply(list.files(),read.csv)
 metab_fcs <- do.call(rbind,metab_fcs)
 
 metab_fcs$X <- NULL
-names(metab_fcs) <- c("cell","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
 
-lapply(paste(metab_fcs$drug,metab_fcs$ionIndex),function(drug_ion){
+lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex)),function(drug_ion){
   #for every ion in each drug associate with GR50
-  drug_ion <- paste(metab_fcs$drug,metab_fcs$ionIndex)[1]
+  print(drug_ion)
+  drug_ion <-  "MEDICA 0.011 1"
   
   tmp <- subset(metab_fcs, drug == strsplit(drug_ion, split = " ")[[1]][1] &
                 ionIndex == as.numeric(strsplit(drug_ion, split = " ")[[1]][2]))
   
-  #filter too strong concentratins and innefective concentrations
   
+  if(nrow(tmp_growth_metrics) > 0){
+    tmp_growth_metrics <- subset(data_GR50, agent == strsplit(drug_ion, split = " ")[[1]][1], select=c("cell_line", 'GR50'))
+    
+    #remove Inf and replace by a very high concentration, defining these cells as resistant
+    tmp_growth_metrics$GR50  <- ifelse(tmp_growth_metrics$GR50 == Inf, max(tmp_growth_metrics$GR50[is.finite(tmp_growth_metrics$GR50)],na.rm = T)*10, tmp_growth_metrics$GR50)
+    
+    #combine metabolomics with GR50
+    
+    tmp <- merge(tmp, tmp_growth_metrics, by = "cell_line")
+    
+    
+    #TODO filter too strong concentratins and innefective concentrations
+    
+    
+    
+    #calculate linear regression intensity vs. GI50
+    
+    slope <- lm(log2fc~GR50, tmp)
+    
+    return(c(drug_ion, slope$coefficients[2]))
+    
+    
+  }else{
+    return(NA)
+  }
   
-  #aggregate GR50 information
-  
-  
-  #calculate linear regression intensity vs. GI50
-  
-  
-  
-})
+}) -> slope_metabolite_effect_on_growth
 
 # Compare metabolomics results for R/Sgroups, and see which one is better
 
