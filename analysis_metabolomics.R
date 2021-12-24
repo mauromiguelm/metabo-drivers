@@ -109,10 +109,40 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 })
 
 
-# use linear regression to see if any metabolites have association with GR50
 # lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
 # do this wiht methotrexate as we have clear expectations
 
+# # use linear regression to see if any metabolites have associati --------
+
+# import log2fc data 
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+metab_fcs <- lapply(list.files(),read.csv)
+
+metab_fcs <- do.call(rbind,metab_fcs)
+
+metab_fcs$X <- NULL
+names(metab_fcs) <- c("cell","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+
+lapply(paste(metab_fcs$drug,metab_fcs$ionIndex),function(drug_ion){
+  #for every ion in each drug associate with GR50
+  drug_ion <- paste(metab_fcs$drug,metab_fcs$ionIndex)[1]
+  
+  tmp <- subset(metab_fcs, drug == strsplit(drug_ion, split = " ")[[1]][1] &
+                ionIndex == as.numeric(strsplit(drug_ion, split = " ")[[1]][2]))
+  
+  #filter too strong concentratins and innefective concentrations
+  
+  
+  #aggregate GR50 information
+  
+  
+  #calculate linear regression intensity vs. GI50
+  
+  
+  
+})
 
 # Compare metabolomics results for R/Sgroups, and see which one is better
 
