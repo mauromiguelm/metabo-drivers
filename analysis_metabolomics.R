@@ -49,7 +49,7 @@ metadata$cell_plate <- paste(metadata$cell, metadata$source_plate, sep = "_")
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 
-lapply(unique(metadata$cell_plate)[c(1,22)], function(cell_plate_idx){
+lapply(unique(metadata$cell_plate), function(cell_plate_idx){
   #subset metadata to  drug & control groups
   #cell_plate_idx <- unique(metadata$cell_plate)[1]
   if (!any(grepl(cell_plate_idx,x=list.files()))){
@@ -136,17 +136,17 @@ metab_fcs <- do.call(rbind,metab_fcs)
 metab_fcs$X <- NULL
 names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
 
-lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex)),function(drug_ion){
+lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug_ion){
   #for every ion in each drug associate with GR50
   print(drug_ion)
-  drug_ion <-  "MEDICA 0.011 1"
+  #drug_ion <-  "MEDICA 16_1"
   
-  tmp <- subset(metab_fcs, drug == strsplit(drug_ion, split = " ")[[1]][1] &
-                ionIndex == as.numeric(strsplit(drug_ion, split = " ")[[1]][2]))
+  tmp <- subset(metab_fcs, drug == strsplit(drug_ion, split = "_")[[1]][1] &
+                ionIndex == as.numeric(strsplit(drug_ion, split = "_")[[1]][2]))
   
+  tmp_growth_metrics <- subset(data_GR50, agent == strsplit(drug_ion, split = "_")[[1]][1], select=c("cell_line", 'GR50'))
   
-  if(nrow(tmp_growth_metrics) > 0){
-    tmp_growth_metrics <- subset(data_GR50, agent == strsplit(drug_ion, split = " ")[[1]][1], select=c("cell_line", 'GR50'))
+  if(nrow(tmp_growth_metrics) > 0 & !all(is.infinite(tmp_growth_metrics$GR50))){
     
     #remove Inf and replace by a very high concentration, defining these cells as resistant
     tmp_growth_metrics$GR50  <- ifelse(tmp_growth_metrics$GR50 == Inf, max(tmp_growth_metrics$GR50[is.finite(tmp_growth_metrics$GR50)],na.rm = T)*10, tmp_growth_metrics$GR50)
@@ -156,7 +156,7 @@ lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex)),function(drug_ion){
     tmp <- merge(tmp, tmp_growth_metrics, by = "cell_line")
     
     
-    #TODO filter too strong concentratins and innefective concentrations
+    #TODO filter too strong concentratins and ineffective concentrations
     
     
     
@@ -172,6 +172,12 @@ lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex)),function(drug_ion){
   }
   
 }) -> slope_metabolite_effect_on_growth
+
+
+tmp <- do.call(rbind, slope_metabolite_effect_on_growth)
+
+tmp <-data.frame(tmp)
+tmp$GR50 <- as.numeric(tmp$GR50)
 
 # Compare metabolomics results for R/Sgroups, and see which one is better
 
