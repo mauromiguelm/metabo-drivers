@@ -13,7 +13,8 @@ devtools::load_all("C:\\Users\\masierom\\polybox\\Programing\\GRmetrics_GI50")
 devtools::load_all("C:\\Users\\masierom\\polybox\\Programing\\tdsR")
 
 time_treatment <- 0
-
+cutoff_GR_max_growth_effect <- 50 #pairs of drug & conc with abs change < this number will be excluded
+cutoff_GR_conc_min_CV <- 10 #pairs of drug & conc with CV < this number will be excluded
 drugs_in_screen <- c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO"))]))
 
 # calculate growth inhibition 50 metrics -----------------------------------
@@ -360,6 +361,36 @@ lapply(unique(tmp$Drug), function(drug_idx){
 })
 
 
+# Remove GR24 outliers ----------------------------------------------------
+# remove pairs of drug_conc that are inefective across all CCLs or that are too strong
+#low = drug_conc without effect across all CCLs
+
+#calculate CV
+GR24_outliers <- output_GR24 %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+
+#label low
+GR24_outliers$outliers <- ifelse(GR24_outliers$variation<=  cutoff_GR_conc_min_CV,"low", NA)
+
+#save output low
+
+setwd(path_data_file)
+
+write.csv(GR24_outliers, "GR24_outliers_low.csv")
+
+#define high outliers
+
+GR24_outliers <- output_GR24
+
+GR24_outliers$outliers <- ifelse(GR24_outliers$percent_change_GR<=  cutoff_GR_max_growth_effect,"high", NA)
+
+#save output
+
+setwd(path_data_file)
+
+write.csv(GR24_outliers, "GR24_outliers_high.csv")
+
+#TODO incorporate this section in the define groups R/S section
+
 # define groups R/S ----------------------------
 
 # create R/S groups based on GR24 results
@@ -378,20 +409,23 @@ GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>20 & abs(GR24_RSgroup
 
 tmp <- output_GR24
 
-tmp$idx <- paste(tmp$Drug, tmp$cell)
+tmp$idx <- paste(tmp$Drug, tmp$cell, sep = "_")
 
-GR24_RSgroups$idx <- paste(GR24_RSgroups$Drug, GR24_RSgroups$cell)
+GR24_RSgroups$idx <- paste(GR24_RSgroups$Drug, GR24_RSgroups$cell, sep = "_")
   
 GR24_RSgroups <- dplyr::right_join(tmp, GR24_RSgroups[,c("idx", "group")], by= "idx")
 
 # remove too strong concentrations, inefficient concentrations
 #define groups based on GR50, drug effect, whether a certain cell_line drug comb is resistnat or sensitive
 
+
 cutoff_GR_max_growth_effect <- 50 #pairs of drug & conc with abs change < this number will be excluded
 cutoff_GR_conc_min_CV <- 10 #pairs of drug & conc with CV < this number will be excluded
 
+#calculate CV
 exclusions_min_growth <- GR24_RSgroups %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
 
+#remove groups that 
 exclusions_min_growth <-exclusions_min_growth[exclusions_min_growth$variation<=  cutoff_GR_conc_min_CV,]
 
 tmp <- exclusions_min_growth

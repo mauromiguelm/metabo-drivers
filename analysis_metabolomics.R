@@ -16,7 +16,9 @@ library(rhdf5)
 setwd(path_data_file)
 
 data_GR50 <- read.csv("outcomes_growth_inhibition50.csv")
-
+GR24_outliers_high <- read.csv('GR24_outliers_high.csv')
+GR24_outliers_low <- read.csv('GR24_outliers_low.csv')
+  
 #import metabolomics 
 
 setwd(path_metabolomics_in)
@@ -120,10 +122,9 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 })
 
 
+# # use linear regression to see if any metabolites have associati --------
 # lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
 # do this wiht methotrexate as we have clear expectations
-
-# # use linear regression to see if any metabolites have associati --------
 
 # import log2fc data 
 
@@ -139,14 +140,15 @@ names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionInde
 lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug_ion){
   #for every ion in each drug associate with GR50
   print(drug_ion)
-  #drug_ion <-  "MEDICA 16_1"
+  #drug_ion <-  "UK5099_1"
   
   tmp <- subset(metab_fcs, drug == strsplit(drug_ion, split = "_")[[1]][1] &
                 ionIndex == as.numeric(strsplit(drug_ion, split = "_")[[1]][2]))
   
   tmp_growth_metrics <- subset(data_GR50, agent == strsplit(drug_ion, split = "_")[[1]][1], select=c("cell_line", 'GR50'))
   
-  if(nrow(tmp_growth_metrics) > 0 & !all(is.infinite(tmp_growth_metrics$GR50))){
+  if(nrow(tmp_growth_metrics) > 0 & sum(is.finite(tmp_growth_metrics$GR50))>=3){
+    #only include drugs where n of defined G50 is higher or equal than 3
     
     #remove Inf and replace by a very high concentration, defining these cells as resistant
     tmp_growth_metrics$GR50  <- ifelse(tmp_growth_metrics$GR50 == Inf, max(tmp_growth_metrics$GR50[is.finite(tmp_growth_metrics$GR50)],na.rm = T)*10, tmp_growth_metrics$GR50)
@@ -155,16 +157,26 @@ lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug
     
     tmp <- merge(tmp, tmp_growth_metrics, by = "cell_line")
     
+    tmp <- tmp%>% dplyr::group_by(cell_line,drug)%>% dplyr::arrange(concentration) %>% dplyr::mutate(concentration = sequence(n()))
     
-    #TODO filter too strong concentratins and ineffective concentrations
+    #filter too strong concentrations and ineffective concentrations
+    #remove drug_conc with no effect
     
+    drug_conc_to_remove <- subset(GR24_outliers_low,outliers == "low" & Drug == strsplit(drug_ion, split = "_")[[1]][1], select =c('Drug', 'Final_conc_uM') )
     
+    tmp <- tmp[!paste(tmp$drug,tmp$concentration, sep = "_") %in% paste(drug_conc_to_remove$Drug,drug_conc_to_remove$Final_conc_uM, sep = "_"),]
+    
+    # remove cell_drug_conc with too strong effect at GR24
+    
+    drug_conc_to_remove <- subset(GR24_outliers_high,outliers == 'high' & Drug == strsplit(drug_ion, split = "_")[[1]][1], select =c('Drug','cell', 'Final_conc_uM') )
+    
+    tmp <- tmp <- tmp[!paste(tmp$cell_line,tmp$drug,tmp$concentration, sep = "_") %in% paste(drug_conc_to_remove$cell,drug_conc_to_remove$Drug,drug_conc_to_remove$Final_conc_uM, sep = "_"),]
     
     #calculate linear regression intensity vs. GI50
     
-    slope <- lm(log2fc~GR50, tmp)
+    slope <- lm(log2fc~log10(GR50), tmp)
     
-    return(c(drug_ion, slope$coefficients[2]))
+    return(c(drug_ion,slope$coefficients[1], slope$coefficients[2]))
     
     
   }else{
