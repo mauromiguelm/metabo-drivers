@@ -366,69 +366,39 @@ lapply(unique(tmp$Drug), function(drug_idx){
 #low = drug_conc without effect across all CCLs
 
 #calculate CV
-GR24_outliers <- output_GR24 %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+GR24_outliers_low <- output_GR24 %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
 
 #label low
-GR24_outliers$outliers <- ifelse(GR24_outliers$variation<=  cutoff_GR_conc_min_CV,"low", NA)
+GR24_outliers_low$outliers <- ifelse(GR24_outliers_low$variation<=  cutoff_GR_conc_min_CV,"low", NA)
 
 #save output low
 
 setwd(path_data_file)
 
-write.csv(GR24_outliers, "GR24_outliers_low.csv")
+write.csv(GR24_outliers_low, "GR24_outliers_low.csv")
 
 #define high outliers
 
-GR24_outliers <- output_GR24
+GR24_outliers_high <- output_GR24
 
-GR24_outliers$outliers <- ifelse(GR24_outliers$percent_change_GR<=  cutoff_GR_max_growth_effect,"high", NA)
+GR24_outliers_high$outliers <- ifelse(GR24_outliers_high$percent_change_GR<=  cutoff_GR_max_growth_effect,"high", NA)
 
 #save output
 
 setwd(path_data_file)
 
-write.csv(GR24_outliers, "GR24_outliers_high.csv")
-
-#TODO incorporate this section in the define groups R/S section
-
-# define groups R/S ----------------------------
-
-# create R/S groups based on GR24 results
-
-# check the CV for each pair of drug_cell and define CV.
-# if cv > 30  == sensitive
-# if cv <10   == resistant
-# if cv >= 10 | <=  30 == intermediate
+write.csv(GR24_outliers_high, "GR24_outliers_high.csv")
 
 
-GR24_RSgroups <- output_GR24 %>% dplyr::group_by(cell, Drug) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+# plot exclusions  
 
-GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>=30, "S",NA) 
-GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)<=20, "R",GR24_RSgroups$group) 
-GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>20 & abs(GR24_RSgroups$variation)<30, "I",GR24_RSgroups$group) 
-
-tmp <- output_GR24
-
-tmp$idx <- paste(tmp$Drug, tmp$cell, sep = "_")
-
-GR24_RSgroups$idx <- paste(GR24_RSgroups$Drug, GR24_RSgroups$cell, sep = "_")
-  
-GR24_RSgroups <- dplyr::right_join(tmp, GR24_RSgroups[,c("idx", "group")], by= "idx")
-
-# remove too strong concentrations, inefficient concentrations
-#define groups based on GR50, drug effect, whether a certain cell_line drug comb is resistnat or sensitive
-
-
-cutoff_GR_max_growth_effect <- 50 #pairs of drug & conc with abs change < this number will be excluded
-cutoff_GR_conc_min_CV <- 10 #pairs of drug & conc with CV < this number will be excluded
-
-#calculate CV
-exclusions_min_growth <- GR24_RSgroups %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
-
-#remove groups that 
-exclusions_min_growth <-exclusions_min_growth[exclusions_min_growth$variation<=  cutoff_GR_conc_min_CV,]
+exclusions_min_growth <-GR24_outliers_low[GR24_outliers_low$variation<=  cutoff_GR_conc_min_CV,]
 
 tmp <- exclusions_min_growth
+
+tmp$outliers <- NULL
+
+tmp$X <- NULL
 
 tmp$variation <- log10(abs(tmp$variation))
 
@@ -450,13 +420,42 @@ heatmap.2(as.matrix(tmp), trace="none", key=T,col = rev(RColorBrewer::brewer.pal
           cexRow = 1.5,cexCol = 2.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',cellnote = exclusions,notecol="black",notecex=2)
 dev.off()
 
+1# define groups R/S based on GR24 ----------------------------
+
+# create R/S groups based on GR24 results
+
+# check the CV for each pair of drug_cell and define CV.
+# if cv > 30  == sensitive
+# if cv <10   == resistant
+# if cv >= 10 | <=  30 == intermediate
+
+GR24_RSgroups <- output_GR24 %>% dplyr::group_by(cell, Drug) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+
+GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>=30, "S",NA) 
+GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)<=20, "R",GR24_RSgroups$group) 
+GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>20 & abs(GR24_RSgroups$variation)<30, "I",GR24_RSgroups$group) 
+
+tmp <- output_GR24
+
+tmp$idx <- paste(tmp$Drug, tmp$cell, sep = "_")
+
+GR24_RSgroups$idx <- paste(GR24_RSgroups$Drug, GR24_RSgroups$cell, sep = "_")
+  
+GR24_RSgroups <- dplyr::right_join(tmp, GR24_RSgroups[,c("idx", "group")], by= "idx")
+
+#remove drug_conc with no effect
+
 filtered_data <- GR24_RSgroups
 
-rows_to_exclude <- paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(exclusions_min_growth$Drug, exclusions_min_growth$Final_conc_uM)
+low_outliers <- subset(GR24_outliers_low, outliers == 'low')
+
+rows_to_exclude <- paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(low_outliers$Drug, low_outliers$Final_conc_uM)
 
 rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
 
 filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
+
+#remove too strong drug_concentrations
 
 rows_to_exclude <- ifelse(filtered_data$percent_change_GR<=cutoff_GR_max_growth_effect, T, F)
 
@@ -466,7 +465,6 @@ filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
 
 tmp <- filtered_data
 
-
 col_breaks <- seq(0,120,length.out = 10)
 
 col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
@@ -474,7 +472,7 @@ col_idxs <- (RColorBrewer::brewer.pal(n=9, "RdYlBu"))
 lapply(unique(tmp$Drug), function(drug_idx){
   #plot results by drug
   
-  #drug_idx = 'BPTES'
+  #drug_idx = 'Methotrexate'
   print(drug_idx)
   drug_data <- subset(tmp, Drug == drug_idx, select=c(cell, Final_conc_uM, percent_change_GR))
   
@@ -535,7 +533,7 @@ lapply(unique(tmp$Drug), function(drug_idx){
 })
   
 
-#plot groups on filtered data
+  #plot groups on filtered data
 
 col_breaks <- seq(0,120,length.out = 10)
 
@@ -761,6 +759,8 @@ lapply(unique(GR24_RSgroups_unfiltered$Drug), function(drug_idx){
 # plot GR50 for each RS group
 
 
+nonEdgy_trans <- function(){   scales::trans_new("nonEdgy",                     transform = function(x) {ifelse(is.finite(x), x, sign(x) * 6)},                     inverse = function(x) {ifelse(abs(x) == 6, sign(x) * Inf, x)}                     ) }
+
 tmp <- subset(filtered_data, !is.na(percent_change_GR))
 tmp <- subset(tmp, select= c(cell, Drug, group))
 
@@ -777,8 +777,6 @@ lapply(unique(tmp$agent), function(drug_idx){
   drug_data$group <- factor(drug_data$group, levels=c("R", "I", "S"))
   
   setwd(paste(path_fig,"RSgroups", sep = "\\"))
-  
-  nonEdgy_trans <- function(){   scales::trans_new("nonEdgy",                     transform = function(x) {ifelse(is.finite(x), x, sign(x) * 6)},                     inverse = function(x) {ifelse(abs(x) == 6, sign(x) * Inf, x)}                     ) }
   
   plt <- ggplot(drug_data,aes(group, log10(GR50)))+
     geom_jitter(aes(colour = ifelse(!is.finite(GR50), 
