@@ -443,6 +443,12 @@ GR24_RSgroups$idx <- paste(GR24_RSgroups$Drug, GR24_RSgroups$cell, sep = "_")
   
 GR24_RSgroups <- dplyr::right_join(tmp, GR24_RSgroups[,c("idx", "group")], by= "idx")
 
+#save full RS groups
+
+setwd(path_data_file)
+
+write.csv(GR24_RSgroups,'outcomes_GR24_RSgroups.csv')
+
 #remove drug_conc with no effect
 
 filtered_data <- GR24_RSgroups
@@ -462,6 +468,14 @@ rows_to_exclude <- ifelse(filtered_data$percent_change_GR<=cutoff_GR_max_growth_
 rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
 
 filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
+
+#save filtered RS groups
+
+setwd(path_data_file)
+
+write.csv(filtered_data,'outcomes_GR24_RSgroups_filtered.csv')
+
+#plot R/S groups
 
 tmp <- filtered_data
 
