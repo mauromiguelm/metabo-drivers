@@ -37,6 +37,20 @@ setwd(paste(path_data_file,'metabolomics', sep = "//"))
 
 metadata <- read.csv("metadata_clean.csv")
 
+# impot R/S groups
+
+setwd(path_data_file)
+
+RS_groups <- read.csv("outcomes_GR24_RSgroups_filtered.csv"  )
+
+#import pathway defition
+
+setwd("C:\\Users\\masierom\\polybox\\Programing\\GSEA\\GSEA_2005_updatedMauro_20180914")
+
+source('GSEA.1.0.Mauro_20180914.R')
+
+load('DataSource.RData')  # This should be used as mock data.
+
 
 #define drugs from controls
 
@@ -389,6 +403,108 @@ ggplot(tmp2, aes(y=log2fc,x=log10(GR50), label = cell_line))+
   geom_text_repel()
 
 # RS groups ---------------------------------------------------------------
+
+
+# #calculate pathway enrichment for R/S groups ------------------------------------
+
+lapply(unique(RS_groups$Drug), function(drug_idx){
+  #drug_idx = 'BPTES'
+  print(drug_idx)
+  RS_sub <- subset(RS_groups, Drug == drug_idx & !is.na(percent_change_GR))
+  
+  res_sub <- subset(RS_sub, group == 'R' )
+    
+  sens_sub <-subset(RS_sub, group == 'S')
+  
+  meta_sub <- subset(metadata, drug == drug_idx)
+  
+  #TODO apply this code to the previous definition of conc_idxs
+  meta_sub$conc <- meta_sub %>% dplyr::group_by(conc) %>%  group_indices(conc)
+  #unique(meta_sub$tmp)
+  #xtabs(~conc+tmp, meta_sub)
+  
+  #TODO add "I" to balance cases
+  resistant_metadata_idx <- subset(meta_sub, cell %in% unique(res_sub$cell) & conc %in%  unique(res_sub$Final_conc_uM))
+  
+  sensitive_metadata_idx <- subset(meta_sub, cell %in% unique(sens_sub$cell) & conc %in%  unique(sens_sub$Final_conc_uM))
+  
+  max_length <- min(nrow(resistant_metadata_idx),nrow(sensitive_metadata_idx))
+  
+  if(max_length>6){
+    sensitive_metadata_idx <- sensitive_metadata_idx[1:max_length,]
+    
+    resistant_metadata_idx <- resistant_metadata_idx[1:max_length,]
+    
+    class.v <- rep(0,nrow(sensitive_metadata_idx))
+    
+    dataset <- data[,sensitive_metadata_idx$idx]
+    
+    dataset <- cbind(dataset, data[,resistant_metadata_idx$idx])
+    
+    dataset <- data.frame(dataset)
+    
+    ions_sub <- ions[,c('ionIndex','idKEGG')]
+    
+    ions_sub <- tidyr::separate_rows(ions_sub,idKEGG, convert = TRUE, sep = ' ')
+    
+    ions_sub <- subset(ions_sub,!grepl("^\\s*$", idKEGG))
+    
+    ions_sub <- ions_sub %>% group_by(idKEGG) %>% slice(1)
+    
+    dataset <- dataset[ions_sub$ionIndex,]
+    
+    rownames(dataset) <- ions_sub$idKEGG
+    class.v <- append(class.v,rep(1,nrow(resistant_metadata_idx)))
+    
+    CLS <- list(class.v = class.v, phen = c("S", 'R'))
+    
+    
+    setwd("C:\\Users\\masierom\\polybox\\Programing\\GSEA\\GSEA_2005_updatedMauro_20180914")
+    
+    Output_GSEA <- GSEA(
+      dataset = dataset,                       # Input gene expression Affy dataset file in RES or GCT format
+      CLS = CLS,                               # Input class vector (phenotype) file in CLS format
+      temp =  temp,                            # Gene set database in GMT format
+      output.directory      = getwd(),         # Directory where to store output and results (default: "")
+      #  Program parameters :----------------------------------------------------------------------------------------------------------------------------
+      doc.string            = drug_idx,      # Documentation string used as a prefix to name result files (default: "GSEA.analysis")
+      non.interactive.run   = T,               # Run in interactive (i.e. R GUI) or batch (R command line) mode (default: F)
+      reshuffling.type      = "sample.labels", # Type of permutation reshuffling: "sample.labels" or "gene.labels" (default: "sample.labels" 
+      nperm                 = 500,            # Number of random permutations (default: 1000)
+      weighted.score.type   =  1,              # Enrichment correlation-based weighting: 0=no weight (KS), 1= weigthed, 2 = over-weigthed (default: 1)
+      nom.p.val.threshold   = -1,              # Significance threshold for nominal p-vals for gene sets (default: -1, no thres)
+      fwer.p.val.threshold  = -1,              # Significance threshold for FWER p-vals for gene sets (default: -1, no thres)
+      fdr.q.val.threshold   = 0.25,            # Significance threshold for FDR q-vals for gene sets (default: 0.25)
+      topgs                 = 20,              # Besides those passing test, number of top scoring gene sets used for detailed reports (default: 10)
+      adjust.FDR.q.val      = F,               # Adjust the FDR q-vals (default: F)
+      gs.size.threshold.min = 10,               # Minimum size (in genes) for database gene sets to be considered (default: 25)
+      gs.size.threshold.max = 500,             # Maximum size (in genes) for database gene sets to be considered (default: 500)
+      reverse.sign          = F,               # Reverse direction of gene list (pos. enrichment becomes negative, etc.) (default: F)
+      preproc.type          = 0,               # Preproc.normalization: 0=none, 1=col(z-score)., 2=col(rank) and row(z-score)., 3=col(rank). (def: 0)
+      random.seed           = 760435,          # Random number generator seed. (default: 123456)
+      perm.type             = 0,               # For experts only. Permutation type: 0 = unbalanced, 1 = balanced (default: 0)
+      fraction              = 1.0,             # For experts only. Subsampling fraction. Set to 1.0 (no resampling) (default: 1.0)
+      replace               = F,               # For experts only, Resampling mode (replacement or not replacement) (default: F)
+      save.intermediate.results = F,           # For experts only, save intermediate results (e.g. matrix of random perm. scores) (default: F)
+      OLD.GSEA              = F,               # Use original (old) version of GSEA (default: F)
+      use.fast.enrichment.routine = T          # Use faster routine to compute enrichment for random permutations (default: T)
+    )
+      
+  }
+  
+  return(Output_GSEA)
+  
+}) -> Output_GSEA
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+metab_fcs <- lapply(list.files(),read.csv)
+
+metab_fcs <- do.call(rbind,metab_fcs)
+
+metab_fcs$X <- NULL
+names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+
 
 
 # Compare metabolomics results for R/Sgroups, and see which one is better
