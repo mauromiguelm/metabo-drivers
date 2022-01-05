@@ -226,7 +226,59 @@ write.csv(slope_metabolite_effect_on_growth, 'metabolite_GI50_association.csv')
 
 # baseline vs drug treated ion compairison --------------------------------
 
-groups_of_interest <- paste(slope_metabolite_effect_on_growth$drug, slope_metabolite_effect_on_growth$ionIndex)
+
+lapply(unique(ions$ionIndex), function(ionidx){
+  #ionidx = 816
+  print(ionidx)
+  #iterate over ions and claculate association betwen basal and drug
+  lapply(unique(RS_groups$Drug), function(drugidx){
+    #drugidx = 'Methotrexate'
+    #iterate over drug
+    
+    RSgroup_sub <- subset(RS_groups, Drug == drugidx & !is.na(percent_change_GR))
+    
+    metadata_doi <- subset(metadata, drug == drugidx)
+    
+    metadata_doi$conc <- metadata_doi %>% dplyr::group_by(conc) %>%  dplyr::group_indices(conc)
+    
+    metadata_doi <- subset(metadata_doi, conc %in% unique(RSgroup_sub$Final_conc_uM))
+    
+    metadata_control <- subset(metadata, cell %in% unique(metadata_doi$cell) & source_plate == unique(metadata_doi$source_plate) & drug == 'DMSO' &
+                                 conc == 367)
+    
+    if(nrow(metadata_doi)>7){
+      #skip drugs with low number of R/S cell lines
+      
+      if(!length(unique(metadata_doi$cell))==length(unique(metadata_control$cell))){stop('diverging number of cell lines across groups')}
+      
+      data_mean_control <- data[ionidx,metadata_control$idx]
+      
+      data_mean_control <- cbind(metadata_control,data.frame("intensities" = data_mean_control))
+      
+      data_mean_control <- data_mean_control %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = mean(intensities))
+      
+      data_mean_drug <- data[ionidx,metadata_doi$idx]
+      
+      data_mean_drug <- cbind(metadata_doi,data.frame("intensities" = data_mean_drug))
+      
+      data_mean_drug <- data_mean_drug %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = mean(intensities))
+      
+      comb_data <- merge(data_mean_control, data_mean_drug, by = 'cell')
+      
+      slope <- lm(mean_ion.y~mean_ion.x, comb_data)
+      
+      pvalue <- summary(slope)
+      
+      return(c(drugidx,ionidx,slope$coefficients[2],pvalue$r.squared,pvalue$adj.r.squared,pvalue$coefficients[2,4]))
+      
+    }
+    
+    
+    
+  })
+  
+  
+}) -> basal_drug_association
 
 
 # plot most interesting associations for each drug -----------------------
