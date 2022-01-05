@@ -254,13 +254,13 @@ lapply(unique(ions$ionIndex), function(ionidx){
       data_mean_control <- data[ionidx,metadata_control$idx]
       
       data_mean_control <- cbind(metadata_control,data.frame("intensities" = data_mean_control))
-      
+      #TODO replace mean with median
       data_mean_control <- data_mean_control %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = mean(intensities))
       
       data_mean_drug <- data[ionidx,metadata_doi$idx]
       
       data_mean_drug <- cbind(metadata_doi,data.frame("intensities" = data_mean_drug))
-      
+      #TODO replace mean with median
       data_mean_drug <- data_mean_drug %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = mean(intensities))
       
       comb_data <- merge(data_mean_control, data_mean_drug, by = 'cell')
@@ -281,11 +281,20 @@ lapply(unique(ions$ionIndex), function(ionidx){
 }) -> basal_drug_association
 
 
+basal_associations <- unlist(basal_drug_association, recursive = F)
+
+basal_associations <- do.call(rbind, basal_associations)
+
+basal_associations <-data.frame(basal_associations)
+
+colnames(basal_associations) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', 'pvalue')
+
 # plot most interesting associations for each drug -----------------------
 #select the top 5 abs(log2fc) for each drug
 
-df <- slope_metabolite_effect_on_growth
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
+df <- read.csv('metabolite_GI50_association.csv')
 
 df <- subset(df, abs(slope) >= 0.08)
 
@@ -299,16 +308,24 @@ tmp_ions <- ions[,c("ionIndex",'mzLabel','score', "name")] %>% dplyr::group_by(i
 
 df <- merge(df, tmp_ions, by='ionIndex')
 
-df$drugion <- paste(df$drug, df$name)
+df$drugion <- paste(df$drug, df$ionIndex)
 
 df <- df[order(df$drug),]
+
+# combine log2fc/GI50 association with basal/treated metabolome association
+
+basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
+
+df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
+
+df$slope.y <- as.numeric(df$slope.y)
 
 #plot with circlize
 
 library(circlize)
 
 df$x=0
-df$color <- ifelse(df$slope<0, "#FF0000", "#00FF00")
+df$color <- ifelse(df$slope.x<0, "#FF0000", "#00FF00")
 circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
 setwd(path_fig)
 
@@ -317,7 +334,7 @@ png("association_GI50_metabolite.png",width = 10000,height = 10000,res = 700)
 
 circos.initialize(df$drug, x = (df$slope_norm))
 
-circos.track(df$drug, y =df$slope,
+circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
                circos.axis(major.tick = F,labels = NULL)
   },bg.border = NA)
@@ -325,37 +342,40 @@ circos.track(df$drug, y =df$slope,
 circos.trackText(sectors = df$drug,x = df$slope_norm, y= df$x, labels = df$name, 
                  cex= 0.8,track.index = 1,facing = 'clockwise',col = df$color,adj =  c(0),niceFacing = T)
 
-circos.track(df$drug, y =df$slope,
+circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
                circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
 
-circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x+2,cex = abs(df$slope)+0.5, col = df$color,pch = 16) 
+circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x+2,cex = abs(df$slope.x)+0.5, col = df$color,pch = 16) 
 
-
-circos.track(df$drug, y =df$slope,
+circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
-               circos.text(CELL_META$xcenter, 
-                           CELL_META$cell.ylim[2] + mm_y(1), 
-                           CELL_META$sector.index,cex = 0.01,facing = 'clockwise',niceFacing = T)
+               circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
+col2 = colorRamp2(c(min(df$slope.y), 1, max(df$slope.y)), c("blue", "grey", "red"))
+
+
+df$color2 <- col2(df$slope.y)
+circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x+4,col = df$color2 ,pch = 16) 
 
 color = viridis::viridis(nrow(df))
 i=1
 for(x in (df$drug)){
   highlight.sector(track.index = 2,col = color[i],sector.index = x)
-  highlight.sector(track.index = 3, col= color[i], sector.index = x)
   i=i+1
 }
 
-circos.track(df$drug, y =df$slope,
+
+circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
                circos.text(CELL_META$xcenter, 
-                           CELL_META$cell.ylim[2] + mm_y(1)+3, 
-                           CELL_META$sector.index,cex = 0.9,facing = 'clockwise',niceFacing = T)
+                           CELL_META$cell.ylim[2] + mm_y(1), 
+                           CELL_META$sector.index,cex = 1.5,facing = 'clockwise',niceFacing = T)
              },bg.border = NA)
+
 
 dev.off()
 circos.clear()
