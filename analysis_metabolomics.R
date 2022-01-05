@@ -210,23 +210,30 @@ slope_metabolite_effect_on_growth$log10.GR50. <- as.numeric(slope_metabolite_eff
 slope_metabolite_effect_on_growth$V4 <- as.numeric(slope_metabolite_effect_on_growth$V4)
 slope_metabolite_effect_on_growth$V5 <- as.numeric(slope_metabolite_effect_on_growth$V5)
 
+slope_metabolite_effect_on_growth <- stringr::str_split_fixed(string = tmp[,1],"_",n = 2)
+
+slope_metabolite_effect_on_growth <- cbind(slope_metabolite_effect_on_growth, tmp[,-c(1)])
+
+slope_metabolite_effect_on_growth <- data.frame(slope_metabolite_effect_on_growth)
+
+colnames(slope_metabolite_effect_on_growth) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', 'pvalue')
+
 #save associations
 
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 write.csv(slope_metabolite_effect_on_growth, 'metabolite_GI50_association.csv')
 
-#plot most interesting associations for each drug
+# baseline vs drug treated ion compairison --------------------------------
 
+groups_of_interest <- paste(slope_metabolite_effect_on_growth$drug, slope_metabolite_effect_on_growth$ionIndex)
+
+
+# plot most interesting associations for each drug -----------------------
 #select the top 5 abs(log2fc) for each drug
 
-df <- stringr::str_split_fixed(string = tmp[,1],"_",n = 2)
+df <- slope_metabolite_effect_on_growth
 
-df <- cbind(df, tmp[,-c(1)])
-
-df <- data.frame(df)
-
-colnames(df) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', 'pvalue')
 
 df <- subset(df, abs(slope) >= 0.08)
 
@@ -301,7 +308,10 @@ circos.track(df$drug, y =df$slope,
 dev.off()
 circos.clear()
 
-# plot one interesting case
+
+# plot one interesting case ---------------------------------------------
+#doi = drug of interest
+#iot = ion of interest
 
 doi <- "Panzem-2-ME2"
 iot <- 103
