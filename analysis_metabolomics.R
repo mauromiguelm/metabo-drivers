@@ -202,74 +202,44 @@ lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug
 }) -> slope_metabolite_effect_on_growth
 
 
-tmp <- do.call(rbind, slope_metabolite_effect_on_growth)
+slope_metabolite_effect_on_growth <- do.call(rbind, slope_metabolite_effect_on_growth)
 
-tmp <-data.frame(tmp)
+slope_metabolite_effect_on_growth <-data.frame(slope_metabolite_effect_on_growth)
 
-
-tmp$log10.GR50. <- as.numeric(tmp$log10.GR50.)
-tmp$V4 <- as.numeric(tmp$V4)
-tmp$V5 <- as.numeric(tmp$V5)
+slope_metabolite_effect_on_growth$log10.GR50. <- as.numeric(slope_metabolite_effect_on_growth$log10.GR50.)
+slope_metabolite_effect_on_growth$V4 <- as.numeric(slope_metabolite_effect_on_growth$V4)
+slope_metabolite_effect_on_growth$V5 <- as.numeric(slope_metabolite_effect_on_growth$V5)
 
 #plot most interesting cases for each drug
 
 #select the top 5 abs(log2fc) for each drug
 
-normalize <- function(x, na.rm = TRUE) {
-  return((x- min(x)) /(max(x)-min(x)))
-}
+df <- stringr::str_split_fixed(string = tmp[,1],"_",n = 2)
 
+df <- cbind(df, tmp[,-c(1)])
 
-tmp3 <- stringr::str_split_fixed(string = tmp[,1],"_",n = 2)
+df <- data.frame(df)
 
-tmp3 <- cbind(tmp3, tmp[,-c(1)])
+colnames(df) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', 'pvalue')
 
-tmp3 <- data.frame(tmp3)
+df <- subset(df, abs(slope) >= 0.08)
 
-colnames(tmp3) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', 'pvalue')
+df <- df %>% group_by(drug) %>% dplyr::arrange(abs(slope)) %>% dplyr::slice_tail(n=5)
 
-tmp3 <- subset(tmp3, abs(slope) >= 0.08)
+df <- df %>% group_by(drug) %>%dplyr::arrange(abs(slope)) %>%  dplyr::mutate(slope_norm = c(5:1)[1:n()])
 
-tmp3 <- tmp3 %>% group_by(drug) %>% dplyr::arrange(abs(slope)) %>% dplyr::slice_tail(n=5)
-
-tmp3 <- tmp3 %>% group_by(drug) %>%dplyr::arrange(abs(slope)) %>%  dplyr::mutate(slope_norm = c(5:1)[1:n()])
-
-tmp3$color <- ifelse(tmp3$slope<0, "Negative", "Positive")
+df$color <- ifelse(df$slope<0, "Negative", "Positive")
 
 tmp_ions <- ions[,c("ionIndex",'mzLabel','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
 
-tmp3 <- merge(tmp3, tmp_ions, by='ionIndex')
+df <- merge(df, tmp_ions, by='ionIndex')
 
-tmp3$drugion <- paste(tmp3$drug, tmp3$name)
+df$drugion <- paste(df$drug, df$name)
 
-tmp3 <- tmp3[order(tmp3$drug),]
-
-
-tmp3$angle_1 <- seq(0, 360, length.out = nrow(tmp3))
-
-tmp3$radius_1 <- 1
-
-library(ggrepel)
-
-ggplot(tmp3, aes(x=angle_1, y=radius_1, size = abs(slope)))+
-  geom_jitter(width = 2, height = 0)+
-  scale_x_continuous(limits = c(0, 360))+
-  scale_y_continuous(limits =c(-5,1))+
-  coord_polar()+
-  theme_bw()+
-  geom_text(aes(label=name),size =2)+
-  theme(plot.margin = unit(c(1, 1, 1, 1), "cm")) +
-  theme(axis.text.x = element_text(
-    angle= -90 - 360 / length(unique(tmp3$drugion)) * seq_along(tmp3$drugion))) -> p
-
-
-p+ geom_bar(aes(x=angle_1, y=-1, col = factor(drug)),width = 2, height = 0, size = 3, stat = 'identity')+
-  geom_text(aes(x=angle_1, y=0,label=drug),size =2)+
-  coord_polar()
+df <- df[order(df$drug),]
 
 #plot with circlize
 
-df <- tmp3
 library(circlize)
 
 df$x=0
@@ -313,8 +283,6 @@ for(x in (df$drug)){
   highlight.sector(track.index = 2,col = color[i],sector.index = x)
   highlight.sector(track.index = 3, col= color[i], sector.index = x)
   i=i+1
-  
-  
 }
 
 circos.track(df$drug, y =df$slope,
@@ -326,109 +294,6 @@ circos.track(df$drug, y =df$slope,
 
 dev.off()
 circos.clear()
-#plot iwth ggplot2
-
-df <- tmp3[,c('drug','name','slope','angle_1')]
-library(tidyverse)
-
-df <- df %>%dplyr::group_by(drug) %>% dplyr::mutate(value = n())
-
-colnames(df) <- c("name", "type",'slope','angle_1','value')
-
-df <- df %>% dplyr::filter(type != "all") %>%
-  dplyr::mutate(name = as.factor(name))%>%
-  dplyr::arrange(name, type) %>%
-  dplyr::mutate(type = as.factor(type)) #fct_reorder2(name, value))
-
-lvl0 <- tibble(name = "Parent", value = 0, fill = NA, fill2=NA, angle_1 = 0,angle_2 = NA,level = 0)
-
-lvl1 <- df %>%
-  dplyr::group_by(name) %>%
-  dplyr::summarise(value = sum(value)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(fill = name)%>%
-  dplyr::mutate(fill2 = NA)%>%
-  dplyr::mutate(angle_1 = seq(90, 450, length.out = n()))%>%
-  dplyr::mutate(level = 1)
-  
-lvl2 <- df %>%
-  dplyr::select(name = type, value, fill = name, fill2 =slope) %>%
-  dplyr::mutate(level = 2)
-
-lvl2$angle_1 <- seq(90, 450, length.out = nrow(lvl2))
-
-library(ggnewscale)
-
-df <- bind_rows(lvl0, lvl1, lvl2)
-
-df$name <- as.character(df$name)
-df$fill <- as.character(df$fill)
-df$fill <- as.factor(df$fill)
-
-df %>%
-  #mutate(name = as.factor(name) %>% fct_reorder2(fill, value)) %>%
-  #arrange(as.factor(name)) %>%
-  mutate(level = as.factor(level)) %>%
-  ggplot(aes(x = level, y = value, fill = fill, alpha = level)) +
-  geom_col(width = 1, color = "gray90", size = 0.25, position = position_stack()) +
-  #geom_text(aes(label = name, angle =), size = 2, position = position_stack(vjust = 0.5)) +
-  scale_colour_brewer(fill, type = 'div')+
-  new_scale("fill")+
-  geom_col(aes(x = level, y = value, fill = fill2),width = 1, color = "gray90", size = 0.25, position = position_stack(),inherit.aes = T) +
-  scale_fill_gradient2("fill2",low = "blue", mid = "white", high = "red")+
-  coord_polar(theta = "y",start = 0) +
-  geom_text(aes(label = name, angle = angle_1), size = 2, position = position_stack(vjust = 0.5),hjust=0.5) +
-  #scale_alpha_manual(values = c("0" = 0, "1" = 1, "2" = 0.7), guide = F) +
-  scale_x_discrete(breaks = NULL) +
-  scale_y_continuous(breaks = NULL) +
-  #scale_fill_brewer(palette = "Dark2", na.translate = F) +
-  labs(x = NULL, y = NULL) +
-  theme_minimal()
-
-
-library(ggraph)
-library(igraph)
-library(tidyverse)
-library(RColorBrewer)
-
-# Create dataset
-data <- data.frame(
-  individual=tmp3$drug,
-  value=tmp3$name
-)
-
-# Set a number of 'empty bar'
-empty_bar <- 10
-
-# Add lines to the initial dataset
-to_add <- matrix(NA, empty_bar, ncol(data))
-colnames(to_add) <- colnames(data)
-data <- rbind(data, to_add)
-data$id <- seq(1, nrow(data))
-
-# Get the name and the y position of each label
-label_data <- data
-number_of_bar <- nrow(label_data)
-angle <- 90 - 360 * (label_data$id-0.5) /number_of_bar     # I substract 0.5 because the letter must have the angle of the center of the bars. Not extreme right(1) or extreme left (0)
-label_data$hjust <- ifelse( angle < -90, 1, 0)
-label_data$angle <- ifelse(angle < -90, angle+180, angle)
-
-# Make the plot
-p <- ggplot(data, aes(x=as.factor(value),y=id, label=value)) +       # Note that id is a factor. If x is numeric, there is some space between the first bar
-  geom_text() +
-  theme_minimal() +
-  theme(
-    axis.text = element_blank(),
-    axis.title = element_blank(),
-    panel.grid = element_blank(),
-    plot.margin = unit(rep(-1,4), "cm") 
-  ) +
-  coord_polar(start = 0) + 
-  geom_text(data=label_data, aes(x=id, y=value, label=individual, hjust=hjust), color="black", fontface="bold", size=2.5, angle= label_data$angle, inherit.aes = FALSE ) 
-
-p
-
-
 
 # plot one interesting case
 
@@ -463,7 +328,6 @@ ggplot(tmp2, aes(y=log2fc,x=log10(GR50), label = cell_line))+
   geom_text_repel()
 
 # RS groups ---------------------------------------------------------------
-
 
 # #calculate pathway enrichment for R/S groups ------------------------------------
 
