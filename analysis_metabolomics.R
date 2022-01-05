@@ -228,7 +228,7 @@ tmp3 <- data.frame(tmp3)
 
 colnames(tmp3) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', 'pvalue')
 
-tmp3 <- subset(tmp3, abs(slope) >= 0.15)
+tmp3 <- subset(tmp3, abs(slope) >= 0.08)
 
 tmp3 <- tmp3 %>% group_by(drug) %>% dplyr::arrange(abs(slope)) %>% dplyr::slice_tail(n=5)
 
@@ -267,6 +267,66 @@ p+ geom_bar(aes(x=angle_1, y=-1, col = factor(drug)),width = 2, height = 0, size
   geom_text(aes(x=angle_1, y=0,label=drug),size =2)+
   coord_polar()
 
+#plot with circlize
+
+df <- tmp3
+library(circlize)
+
+df$x=0
+df$color <- ifelse(df$slope<0, "#FF0000", "#00FF00")
+circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
+setwd(path_fig)
+
+par(mar = c(500, 800, 400, 200) + 100)
+png("association_GI50_metabolite.png",width = 10000,height = 10000,res = 700) 
+
+circos.initialize(df$drug, x = (df$slope_norm))
+
+circos.track(df$drug, y =df$slope,
+             panel.fun = function(x, y) {
+               circos.axis(major.tick = F,labels = NULL)
+  },bg.border = NA)
+
+circos.trackText(sectors = df$drug,x = df$slope_norm, y= df$x, labels = df$name, 
+                 cex= 0.8,track.index = 1,facing = 'clockwise',col = df$color,adj =  c(0),niceFacing = T)
+
+circos.track(df$drug, y =df$slope,
+             panel.fun = function(x, y) {
+               circos.axis(major.tick = F,labels = NULL)
+             },bg.border = NA)
+
+
+circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x+2,cex = abs(df$slope)+0.5, col = df$color,pch = 16) 
+
+
+circos.track(df$drug, y =df$slope,
+             panel.fun = function(x, y) {
+               circos.text(CELL_META$xcenter, 
+                           CELL_META$cell.ylim[2] + mm_y(1), 
+                           CELL_META$sector.index,cex = 0.01,facing = 'clockwise',niceFacing = T)
+             },bg.border = NA)
+
+
+color = viridis::viridis(nrow(df))
+i=1
+for(x in (df$drug)){
+  highlight.sector(track.index = 2,col = color[i],sector.index = x)
+  highlight.sector(track.index = 3, col= color[i], sector.index = x)
+  i=i+1
+  
+  
+}
+
+circos.track(df$drug, y =df$slope,
+             panel.fun = function(x, y) {
+               circos.text(CELL_META$xcenter, 
+                           CELL_META$cell.ylim[2] + mm_y(1)+3, 
+                           CELL_META$sector.index,cex = 0.9,facing = 'clockwise',niceFacing = T)
+             },bg.border = NA)
+
+dev.off()
+circos.clear()
+#plot iwth ggplot2
 
 df <- tmp3[,c('drug','name','slope','angle_1')]
 library(tidyverse)
