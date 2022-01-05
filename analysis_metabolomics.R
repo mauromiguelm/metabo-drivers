@@ -210,7 +210,13 @@ slope_metabolite_effect_on_growth$log10.GR50. <- as.numeric(slope_metabolite_eff
 slope_metabolite_effect_on_growth$V4 <- as.numeric(slope_metabolite_effect_on_growth$V4)
 slope_metabolite_effect_on_growth$V5 <- as.numeric(slope_metabolite_effect_on_growth$V5)
 
-#plot most interesting cases for each drug
+#save associations
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+write.csv(slope_metabolite_effect_on_growth, 'metabolite_GI50_association.csv')
+
+#plot most interesting associations for each drug
 
 #select the top 5 abs(log2fc) for each drug
 
