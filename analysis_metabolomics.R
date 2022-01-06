@@ -10,6 +10,7 @@ source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\plate_converter.R")
 library(openxlsx)
 library(dplyr)
 library(rhdf5)
+library(parallel)
 
 #import drug sensitity metrics
 
@@ -152,21 +153,26 @@ groups <- t(combn(groups,m = 2))
 
 metadata$groups <- paste(metadata$cell, metadata$drug, metadata$conc,sep = '_')
 
-lapply(1:100, function(idx){
+numWorkers <- 7
+
+cl <-makeCluster(numWorkers, type="PSOCK")
+
+parallel::setDefaultCluster(cl)
+
+start_time <- Sys.time()
+sleep_for_a_minute()
+parallel::parLapply(cl=cl,1:nrow(groups),metadata. = metadata,data. = data, groups.=groups, function(idx){
   #TODO parallelize
   #idx = 1
   #get groups data
+  meta_g1 <- metadata.[metadata.$groups %in% groups.[idx,1],]
+  meta_g2 <- metadata.[metadata.$groups %in% groups.[idx,2],]
   
-  print(idx)
-  
-  meta_g1 <- metadata[metadata$groups %in% groups[idx,1],]
-  meta_g2 <- metadata[metadata$groups %in% groups[idx,2],]
-  
-  data_g1 <- data[,meta_g1$idx]
+  data_g1 <- data.[,meta_g1$idx]
   
   data_g1 <- apply(data_g1,1,median)
   
-  data_g2 <- data[,meta_g2$idx]
+  data_g2 <- data.[,meta_g2$idx]
   
   data_g2 <- apply(data_g2,1,median)
   
@@ -189,7 +195,7 @@ lapply(1:100, function(idx){
   
   d_spe <- cor(data_g1,data_g2,method = 'spearman')
   
-  return(data.frame(g1 = groups[idx,1], g2 = groups[idx,2],
+  return(data.frame(g1 = groups.[idx,1], g2 = groups.[idx,2],
                     cosine = d_cos,
                     pearson = d_pearson,
                     euclidean = d_euc,
@@ -197,6 +203,8 @@ lapply(1:100, function(idx){
                     spearman = d_spe))
   
 }) -> df_sim
+end_time <- Sys.time()
+end_time - start_time
 
 df_sim <- do.call(rbind,df_sim)
 
