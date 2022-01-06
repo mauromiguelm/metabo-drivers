@@ -140,33 +140,66 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 
 groups <- metadata
   
-#selecting only the first three concentrations
-groups$conc <- groups %>% dplyr::group_by(conc) %>%  dplyr::group_indices(conc)
+#TODO maybe select only the first three concentrations
 
-groups <- subset(groups, conc %in% 3:5)
+groups <- subset(groups, drug == c('Methotrexate'))
 
-groups <- paste(groups$cell, groups$drug, groups$conc)
+groups <- groups[groups$conc %in% sort(unique(groups$conc))[3:5],]
 
-lapply(combinatorial, function(idx){
+groups <- paste(groups$cell, groups$drug, groups$conc,sep = '_')
+
+groups <- t(combn(groups,m = 2))
+
+metadata$groups <- paste(metadata$cell, metadata$drug, metadata$conc,sep = '_')
+
+lapply(1:100, function(idx){
   #TODO parallelize
-  
+  #idx = 1
   #get groups data
+  
+  print(idx)
+  
+  meta_g1 <- metadata[metadata$groups %in% groups[idx,1],]
+  meta_g2 <- metadata[metadata$groups %in% groups[idx,2],]
+  
+  data_g1 <- data[,meta_g1$idx]
+  
+  data_g1 <- apply(data_g1,1,median)
+  
+  data_g2 <- data[,meta_g2$idx]
+  
+  data_g2 <- apply(data_g2,1,median)
   
   #average groups
   
-  #measures of similarity :::1
+  #measures of similarity cosine
   
-  #measures of similarity :::1
+  d_cos <- proxy::simil(rbind(data_g1,data_g2),method = 'cosine')[1]
+  #measures of similarity pearson
   
-  #measures of similarity :::1
+  d_pearson <- cor(data_g1,data_g2,method = 'pearson')
+  #measures of similarity euclidean
   
-  #measures of similarity :::1
+  d_euc <- proxy::simil(rbind(data_g1,data_g2),method = 'euclidean')[1]
+  #measures of similarity Hamman
   
+  d_ham <- proxy::simil(rbind(data_g1,data_g2),method = 'Hamman')[1]
   
-  return(metrics)
+  #measures of similarity spearman
   
+  d_spe <- cor(data_g1,data_g2,method = 'spearman')
   
-})
+  return(data.frame(g1 = groups[idx,1], g2 = groups[idx,2],
+                    cosine = d_cos,
+                    pearson = d_pearson,
+                    euclidean = d_euc,
+                    hamman = d_ham,
+                    spearman = d_spe))
+  
+}) -> df_sim
+
+df_sim <- do.call(rbind,df_sim)
+
 
 
 # # use linear regression to see if any metabolites have associati --------
