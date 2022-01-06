@@ -136,10 +136,41 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 })
 
 
+# metabolome similarity across drugs_conc_cell lines ----------------------
+
+groups <- metadata
+  
+#selecting only the first three concentrations
+groups$conc <- groups %>% dplyr::group_by(conc) %>%  dplyr::group_indices(conc)
+
+groups <- subset(groups, conc %in% 3:5)
+
+groups <- paste(groups$cell, groups$drug, groups$conc)
+
+lapply(combinatorial, function(idx){
+  #TODO parallelize
+  
+  #get groups data
+  
+  #average groups
+  
+  #measures of similarity :::1
+  
+  #measures of similarity :::1
+  
+  #measures of similarity :::1
+  
+  #measures of similarity :::1
+  
+  
+  return(metrics)
+  
+  
+})
+
+
 # # use linear regression to see if any metabolites have associati --------
 # lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
-# do this wiht methotrexate as we have clear expectations
-
 # import log2fc data 
 
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
@@ -379,7 +410,6 @@ circos.track(df$drug, y =df$slope.x,
 
 dev.off()
 circos.clear()
-
 
 # plot one interesting case ---------------------------------------------
 #doi = drug of interest
