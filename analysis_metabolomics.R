@@ -11,6 +11,7 @@ library(openxlsx)
 library(dplyr)
 library(rhdf5)
 library(parallel)
+library(proxy)
 
 #import drug sensitity metrics
 
@@ -141,13 +142,12 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 
 groups <- metadata
   
-#TODO maybe select only the first three concentrations
+#TODO select only the highest concentration for each drug
 
-groups <- subset(groups, drug == c('Methotrexate'))
+groups <- groups[groups$drug %in% unique(groups$drug)[1:10],]
+#groups <- groups[groups$conc %in% c(110,367),]
 
-groups <- groups[groups$conc %in% sort(unique(groups$conc))[3:5],]
-
-groups <- paste(groups$cell, groups$drug, groups$conc,sep = '_')
+groups <- unique(paste(groups$cell, groups$drug, groups$conc,sep = '_'))
 
 groups <- t(combn(groups,m = 2))
 
@@ -155,27 +155,22 @@ metadata$groups <- paste(metadata$cell, metadata$drug, metadata$conc,sep = '_')
 
 numWorkers <- 7
 
+
 cl <-makeCluster(numWorkers, type="PSOCK")
 
-parallel::setDefaultCluster(cl)
+calculate_slope_basal <- function(idx, metadata_, data_, groups_) {
+  
+  meta_g1 <- metadata_[metadata_$groups %in% groups_[idx,1],]
+  meta_g2 <- metadata_[metadata_$groups %in% groups_[idx,2],]
+  
+  data_g1 <- data_[,meta_g1$idx]
 
-start_time <- Sys.time()
-sleep_for_a_minute()
-parallel::parLapply(cl=cl,1:nrow(groups),metadata. = metadata,data. = data, groups.=groups, function(idx){
-  #TODO parallelize
-  #idx = 1
-  #get groups data
-  meta_g1 <- metadata.[metadata.$groups %in% groups.[idx,1],]
-  meta_g2 <- metadata.[metadata.$groups %in% groups.[idx,2],]
-  
-  data_g1 <- data.[,meta_g1$idx]
-  
   data_g1 <- apply(data_g1,1,median)
-  
-  data_g2 <- data.[,meta_g2$idx]
-  
+
+  data_g2 <- data_[,meta_g2$idx]
+
   data_g2 <- apply(data_g2,1,median)
-  
+
   #average groups
   
   #measures of similarity cosine
@@ -195,22 +190,25 @@ parallel::parLapply(cl=cl,1:nrow(groups),metadata. = metadata,data. = data, grou
   
   d_spe <- cor(data_g1,data_g2,method = 'spearman')
   
-  return(data.frame(g1 = groups.[idx,1], g2 = groups.[idx,2],
+  return(data.frame(g1 = groups_[idx,1], g2 = groups_[idx,2],
                     cosine = d_cos,
                     pearson = d_pearson,
                     euclidean = d_euc,
                     hamman = d_ham,
                     spearman = d_spe))
-  
-}) -> df_sim
-end_time <- Sys.time()
-end_time - start_time
 
-df_sim <- do.call(rbind,df_sim)
+}
+
+system.time({
+  results <- parallel::parLapply(cl=cl,1:nrow(groups), calculate_slope_basal, metadata_=metadata, data_=data, groups_ = groups)
+})
 
 
+parallel::stopCluster(cl)
 
-# # use linear regression to see if any metabolites have associati --------
+# association GI50 with log2fc --------
+#TODO bootstrap to for slope cutoff
+#TODO run bootstrap for each drug
 # lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
 # import log2fc data 
 
@@ -297,7 +295,8 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 write.csv(slope_metabolite_effect_on_growth, 'metabolite_GI50_association.csv')
 
 # baseline vs drug treated ion compairison --------------------------------
-
+#TODO bootstrap to for slope cutoff
+#TODO run bootstrap for each drug
 
 lapply(unique(ions$ionIndex), function(ionidx){
   #ionidx = 816
