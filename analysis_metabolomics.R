@@ -33,9 +33,9 @@ ions <- rhdf5::h5read(file = "metabolomics_raw.h5", '/annotation')
 
 ions <- data.frame(ions)
 
-setwd(paste(path_data_file,'metabolomics', sep = "//"))
-
 #import cleaned metadata
+
+setwd(paste(path_data_file,'metabolomics', sep = "//"))
 
 metadata <- read.csv("metadata_clean.csv")
 
@@ -529,13 +529,33 @@ ggplot(tmp2, aes(y=log2fc,x=log10(GR50), label = cell_line))+
 # #calculate pathway enrichment for R/S groups ------------------------------------
 
 lapply(unique(RS_groups$Drug), function(drug_idx){
-  #drug_idx = 'BPTES'
+  #drug_idx = 'Methotrexate'
   print(drug_idx)
   RS_sub <- subset(RS_groups, Drug == drug_idx & !is.na(percent_change_GR))
   
   res_sub <- subset(RS_sub, group == 'R' )
     
   sens_sub <-subset(RS_sub, group == 'S')
+  
+  int_sub <-subset(RS_sub, group == 'I')
+  
+  if(nrow(res_sub) < nrow(sens_sub)){
+    #add "I" to balance cases
+    
+    row_diff <- nrow(sens_sub)- nrow(res_sub)
+    res_sub <- rbind(res_sub, int_sub[1:row_diff,])
+    res_sub <- res_sub[!is.na(res_sub$X),]
+    res_sub$group <- "R"
+  }
+  
+  if(nrow(res_sub) > nrow(sens_sub)){
+    #add "I" to balance cases
+    
+    row_diff <- nrow(res_sub)- nrow(sens_sub)
+    sens_sub <- rbind(sens_sub, int_sub[1:row_diff,])
+    sens_sub <- sens_sub[!is.na(sens_sub$X),]
+    sens_sub$group <- "S"
+  }
   
   meta_sub <- subset(metadata, drug == drug_idx)
   
@@ -544,7 +564,7 @@ lapply(unique(RS_groups$Drug), function(drug_idx){
   #unique(meta_sub$tmp)
   #xtabs(~conc+tmp, meta_sub)
   
-  #TODO add "I" to balance cases
+  
   resistant_metadata_idx <- subset(meta_sub, cell %in% unique(res_sub$cell) & conc %in%  unique(res_sub$Final_conc_uM))
   
   sensitive_metadata_idx <- subset(meta_sub, cell %in% unique(sens_sub$cell) & conc %in%  unique(sens_sub$Final_conc_uM))
@@ -570,7 +590,7 @@ lapply(unique(RS_groups$Drug), function(drug_idx){
     
     ions_sub <- subset(ions_sub,!grepl("^\\s*$", idKEGG))
     
-    ions_sub <- ions_sub %>% group_by(idKEGG) %>% slice(1)
+    ions_sub <- ions_sub %>% dplyr::group_by(idKEGG) %>% dplyr::slice(1)
     
     dataset <- dataset[ions_sub$ionIndex,]
     
@@ -610,12 +630,21 @@ lapply(unique(RS_groups$Drug), function(drug_idx){
       OLD.GSEA              = F,               # Use original (old) version of GSEA (default: F)
       use.fast.enrichment.routine = T          # Use faster routine to compute enrichment for random permutations (default: T)
     )
-      
+    return(Output_GSEA) 
   }
   
-  return(Output_GSEA)
   
 }) -> Output_GSEA
+
+
+#plotting enrichment results
+
+setwd("C:\\Users\\masierom\\polybox\\Programing\\GSEA")
+files <- list.files(pattern = "SUMMARY.RESULTS.REPORT")
+
+results <- lapply(files, read.delim)
+
+results <- do.call(rbind, results)
 
 # Compare metabolomics results for R/Sgroups, and see which one is better
 
