@@ -139,37 +139,38 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 
 
 # metabolome similarity across drugs_conc_cell lines ----------------------
+#TODO replace raw intensities with log2fc when calculating simil
 
-groups <- metadata
-  
-#TODO select only the highest concentration for each drug
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
-groups <- groups[groups$drug %in% unique(groups$drug)[1:10],]
-#groups <- groups[groups$conc %in% c(110,367),]
+metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
 
-groups <- unique(paste(groups$cell, groups$drug, groups$conc,sep = '_'))
+metab_fcs <- do.call(rbind,metab_fcs)
+
+metab_fcs$X <- NULL
+names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+
+metab_fcs <- metab_fcs[metab_fcs$drug %in% unique(metab_fcs$drug)[1:10],]
+
+groups <- unique(paste(metab_fcs$cell, metab_fcs$drug, metab_fcs$conc,sep = '_'))
 
 groups <- t(combn(groups,m = 2))
 
-metadata$groups <- paste(metadata$cell, metadata$drug, metadata$conc,sep = '_')
+metab_fcs$groups <- paste(metab_fcs$cell, metab_fcs$drug, metab_fcs$conc,sep = '_')
 
 numWorkers <- 7
 
-
 cl <-makeCluster(numWorkers, type="PSOCK")
 
-calculate_slope_basal <- function(idx, metadata_, data_, groups_) {
-  
+calculate_slope_basal <- function(idx, metadata_, groups_) {
+  #idx = 1
   meta_g1 <- metadata_[metadata_$groups %in% groups_[idx,1],]
   meta_g2 <- metadata_[metadata_$groups %in% groups_[idx,2],]
   
-  data_g1 <- data_[,meta_g1$idx]
+  data_g1 <- meta_g1$log2fc
+  data_g2 <- meta_g2$log2fc
 
-  data_g1 <- apply(data_g1,1,median)
-
-  data_g2 <- data_[,meta_g2$idx]
-
-  data_g2 <- apply(data_g2,1,median)
+  #TODO release a warning in case data is empty
 
   #average groups
   
@@ -200,21 +201,59 @@ calculate_slope_basal <- function(idx, metadata_, data_, groups_) {
 }
 
 system.time({
-  results <- parallel::parLapply(cl=cl,1:nrow(groups), calculate_slope_basal, metadata_=metadata, data_=data, groups_ = groups)
+  results <- parallel::parLapply(cl=cl,1:nrow(groups), calculate_slope_basal, metadata_=metab_fcs, groups_ = groups)
 })
 
-
 parallel::stopCluster(cl)
+
+rm(cl)
+# save results
+
+results <- do.call(rbind, results)
+
+setwd(paste0(path_data_file,"\\metabolomics","\\similarity"))
+
+write.csv(results, 'similarity_results_log2fc.csv')
+
+# plot results
+
+setwd(paste0(path_data_file,"\\metabolomics","\\similarity"))
+
+results <- read.csv('similarity_results_log2fc.csv')
+
+tmp <- results
+
+tmp2 <- results
+
+tmp2$g2 <- tmp$g1
+tmp2$g1 <- tmp$g2
+
+tmp <- rbind(tmp, tmp2)
+
+wide_result <- tidyr::spread(tmp[,c('g1','g2','cosine')],'g2','cosine',fill = 1)
+
+rownames(wide_result) <- wide_result$g1
+
+wide_result$g1 <- NULL
+col <- viridis::viridis(999)
+
+setwd(path_fig)
+library(heatmaply)
+
+png('heatmap_cos_sim.png',width = 1000,height = 1000)
+
+heatmaply(as.matrix(wide_result))
+plt <- gplots::heatmap.2(as.matrix(wide_result),symm = T,trace = 'none', col=col)
+dev.off()
 
 # association GI50 with log2fc --------
 #TODO bootstrap to for slope cutoff
 #TODO run bootstrap for each drug
 # lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
 # import log2fc data 
-
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
-metab_fcs <- lapply(list.files(),read.csv)
+metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
 
 metab_fcs <- do.call(rbind,metab_fcs)
 
@@ -577,17 +616,6 @@ lapply(unique(RS_groups$Drug), function(drug_idx){
   return(Output_GSEA)
   
 }) -> Output_GSEA
-
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-metab_fcs <- lapply(list.files(),read.csv)
-
-metab_fcs <- do.call(rbind,metab_fcs)
-
-metab_fcs$X <- NULL
-names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
-
-
 
 # Compare metabolomics results for R/Sgroups, and see which one is better
 
