@@ -420,35 +420,55 @@ heatmap.2(as.matrix(tmp), trace="none", key=T,col = rev(RColorBrewer::brewer.pal
           cexRow = 1.5,cexCol = 2.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',cellnote = exclusions,notecol="black",notecex=2)
 dev.off()
 
-1# define groups R/S based on GR24 ----------------------------
+# define groups R/S based on GR24 ----------------------------
 
 # create R/S groups based on GR24 results
 
-# check the CV for each pair of drug_cell and define CV.
-# if cv > 30  == sensitive
-# if cv <10   == resistant
-# if cv >= 10 | <=  30 == intermediate
+#remove concentrations with no effect
 
-GR24_RSgroups <- output_GR24 %>% dplyr::group_by(cell, Drug) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
 
-GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>=30, "S",NA) 
-GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)<=20, "R",GR24_RSgroups$group) 
-GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>20 & abs(GR24_RSgroups$variation)<30, "I",GR24_RSgroups$group) 
+filtered_data <- output_GR24
+low_outliers <- subset(GR24_outliers_low, outliers == 'low')
+rows_to_exclude <- !paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(low_outliers$Drug, low_outliers$Final_conc_uM)
 
-tmp <- output_GR24
 
-tmp$idx <- paste(tmp$Drug, tmp$cell, sep = "_")
-
-GR24_RSgroups$idx <- paste(GR24_RSgroups$Drug, GR24_RSgroups$cell, sep = "_")
+get_random_GR <- function(min,max, n, dist = 10){
+  #min = min value from vector to be sampled
+  #max = max value from vector to be sampled
+  #n = number of cutoffs
+  #dist = min distance between cutoffs
   
-GR24_RSgroups <- dplyr::right_join(tmp, GR24_RSgroups[,c("idx", "group")], by= "idx")
+  sample_distribution <- runif(n*1000, min = min, max = max) #generate uniform distribution
+  cutoff_distribution <- NULL
+  while(length(cutoff_distribution) <n){
+    cutoffs <- sample(sample_distribution,size = 2)
+    cutoffs <- sort(cutoffs)
+    if(abs(cutoffs[1]-cutoffs[2])>dist){
+      cutoff_distribution <- append(cutoff_distribution,list(cutoffs))
+    }
+    
+    
+  }
+  return(cutoff_distribution)
+}
 
-#save full RS groups
+filtered_data <- filtered_data[rows_to_exclude,]
 
-setwd(path_data_file)
+#calculate threshold that distinguish R/S groups
 
-write.csv(GR24_RSgroups,'outcomes_GR24_RSgroups.csv')
+lapply(unique(filtered_data$Drug), function(idx){
+  print(idx)
+  idx = 'Erlotinib'
+  sub_data <- subset(filtered_data, Drug == idx)
+  
+  min_value <- min(sub_data$percent_change_GR)
+  max_value <- max(sub_data$percent_change_GR)
+  
+  
+  
+})
 
+ 
 #remove drug_conc with no effect
 
 filtered_data <- GR24_RSgroups
@@ -456,14 +476,6 @@ filtered_data <- GR24_RSgroups
 low_outliers <- subset(GR24_outliers_low, outliers == 'low')
 
 rows_to_exclude <- paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(low_outliers$Drug, low_outliers$Final_conc_uM)
-
-rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
-
-filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
-
-#remove too strong drug_concentrations
-
-rows_to_exclude <- ifelse(filtered_data$percent_change_GR<=cutoff_GR_max_growth_effect, T, F)
 
 rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
 
