@@ -2,6 +2,7 @@
 
 # load packages nad definitions -------------------------------------------
 
+path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
 path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\growth_metrics'
 load("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data\\growth_curves_filtered.RData")
@@ -16,6 +17,20 @@ time_treatment <- 0
 cutoff_GR_max_growth_effect <- 50 #pairs of drug & conc with abs change < this number will be excluded
 cutoff_GR_conc_min_CV <- 10 #pairs of drug & conc with CV < this number will be excluded
 drugs_in_screen <- c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO"))]))
+
+#import metabolomics data
+
+setwd(path_metabolomics_in)
+dataContent<- h5ls("metabolomics_raw.h5")
+data<- rhdf5::h5read(file = "metabolomics_raw.h5", '/data')
+ions <- rhdf5::h5read(file = "metabolomics_raw.h5", '/annotation')
+ions <- data.frame(ions)
+
+#import cleaned metadata
+
+setwd(paste(path_data_file,'metabolomics', sep = "//"))
+metadata <- read.csv("metadata_clean.csv")
+
 
 # calculate growth inhibition 50 metrics -----------------------------------
 
@@ -189,14 +204,23 @@ dev.off()
 
 lapply(c("P1", "P2"), function(plate){ 
   # calculate results by plate
-  #plate = "P1"
+  #plate = "P2"
+  
   tmp <- subset(data_corrected, Time == 0 & source_plate == plate, select = c("GR24","Drug", "cell", "Final_conc_uM", "source_plate")) #keep one time point with GR24.. all time points have the same value..
   
   tmp <- tmp %>% 
     dplyr::group_by(Drug, cell,Final_conc_uM) %>% 
     dplyr::summarise(median_GR24 = median(GR24))
   
-  tmp <- tmp%>% dplyr::group_by(cell,Drug)%>% dplyr::arrange(Final_conc_uM) %>% dplyr::mutate(Final_conc_uM = sequence(n()))
+  #TODO fix conc problem
+  
+  lapply(unique(tmp$Drug), function(drug_idx){
+    tmp <- subset(tmp, Drug == drug_idx)
+    tmp$Final_conc_uM <- tmp %>%  dplyr::group_indices(Final_conc_uM)
+    return(tmp)
+  }) -> tmp
+  
+  tmp <- do.call(rbind,tmp)
   
   control <- subset(tmp, Drug == "DMSO")
   
@@ -426,47 +450,81 @@ dev.off()
 
 #remove concentrations with no effect
 
-
 filtered_data <- output_GR24
 low_outliers <- subset(GR24_outliers_low, outliers == 'low')
 rows_to_exclude <- !paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(low_outliers$Drug, low_outliers$Final_conc_uM)
+filtered_data <- filtered_data[rows_to_exclude,]
 
 
-get_random_GR <- function(min,max, n, dist = 10){
+get_random_threshold <- function(min,max, n, dist = 10){
   #min = min value from vector to be sampled
   #max = max value from vector to be sampled
   #n = number of cutoffs
   #dist = min distance between cutoffs
-  
-  sample_distribution <- runif(n*1000, min = min, max = max) #generate uniform distribution
+  sample_distribution <- runif(n*100, min = min, max = max) #generate uniform distribution
   cutoff_distribution <- NULL
   while(length(cutoff_distribution) <n){
+    #iterate until getting n cutoffs with distance > dist
     cutoffs <- sample(sample_distribution,size = 2)
     cutoffs <- sort(cutoffs)
     if(abs(cutoffs[1]-cutoffs[2])>dist){
       cutoff_distribution <- append(cutoff_distribution,list(cutoffs))
     }
-    
-    
   }
   return(cutoff_distribution)
 }
 
-filtered_data <- filtered_data[rows_to_exclude,]
 
-#calculate threshold that distinguish R/S groups
+# iterate over thresholds and calculate pvals/fdr
 
-lapply(unique(filtered_data$Drug), function(idx){
-  print(idx)
-  idx = 'Erlotinib'
-  sub_data <- subset(filtered_data, Drug == idx)
-  
+lapply(unique(filtered_data$Drug), function(drug_idx){
+  #drug_idx = 'Methotrexate'
+  sub_data <- subset(filtered_data, Drug == drug_idx)
   min_value <- min(sub_data$percent_change_GR)
   max_value <- max(sub_data$percent_change_GR)
+  thresholds <- get_random_threshold(min_value,max_value,500)
+  sub_meta <- subset(metadata, drug ==drug_idx)
+  sub_meta$conc <- sub_meta %>% dplyr::group_by(conc) %>%  dplyr::group_indices(conc)
+  sub_meta$cell_conc <- paste(sub_meta$cell,sub_meta$conc)
   
+  results_comb <- data.frame()
   
+  for(idx in seq_along(thresholds)){
+    #idx = 1
+    print(idx)
+    sub_data$group <-NA
+    sub_data$group <- ifelse(sub_data$percent_change_GR <=thresholds[[idx]][1],'S',sub_data$group)
+    sub_data$group <- ifelse(sub_data$percent_change_GR >=thresholds[[idx]][2],'R',sub_data$group)
+    sub_data$group <- ifelse(is.na(sub_data$group),'I',sub_data$group)
+    sub_data$cell_conc <- paste(sub_data$cell,sub_data$Final_conc_uM)
+    #calculate stats between R/S groups
+    data_s <- subset(sub_data, group=='S')
+    data_s <- sub_meta[sub_meta$cell_conc %in% data_s$cell_conc,]
+    data_s <- data[,data_s$idx]
+    data_r <- subset(sub_data, group=='R')
+    data_r <- sub_meta[sub_meta$cell_conc %in% data_r$cell_conc,]
+    data_r <- data[,data_r$idx]
+    
+    lapply(1:nrow(data_s),function(met_idx){
+      #met_idx = 1
+      pval <- t.test(data_s[met_idx,],data_r[met_idx,])[[3]]
+      log2fc <- log2(median(data_s[met_idx,])/median(data_r[met_idx,]))
+      
+      return(data.frame(drug = drug_idx,
+                        t1=thresholds[[idx]][1],
+                        t2=thresholds[[idx]][2],
+                        log2fc=log2fc,pval))
+    }) ->results
+    
+    results <- do.call(rbind, results)
+    results_comb <- rbind(results_comb,results)
+  }
   
-})
+  return(results_comb)
+
+}) -> out_thresholds
+
+
 
  
 #remove drug_conc with no effect
