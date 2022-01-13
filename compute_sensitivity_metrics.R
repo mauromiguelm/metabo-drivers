@@ -212,8 +212,6 @@ lapply(c("P1", "P2"), function(plate){
     dplyr::group_by(Drug, cell,Final_conc_uM) %>% 
     dplyr::summarise(median_GR24 = median(GR24))
   
-  #TODO fix conc problem
-  
   lapply(unique(tmp$Drug), function(drug_idx){
     tmp <- subset(tmp, Drug == drug_idx)
     tmp$Final_conc_uM <- tmp %>%  dplyr::group_indices(Final_conc_uM)
@@ -456,14 +454,23 @@ rows_to_exclude <- !paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% pa
 filtered_data <- filtered_data[rows_to_exclude,]
 
 
-get_random_threshold <- function(min,max, n, dist = 10){
+
+library(parallel)
+numWorkers <- 7
+
+
+setwd(path_data_file)
+cl <-makeCluster(numWorkers, type="PSOCK",outfile = "tmp_err.txt")
+
+# iterate over thresholds and calculate pvals/fdr
+get_random_threshold <- function(min,max, n_, dist = 10){
   #min = min value from vector to be sampled
   #max = max value from vector to be sampled
   #n = number of cutoffs
   #dist = min distance between cutoffs
-  sample_distribution <- runif(n*100, min = min, max = max) #generate uniform distribution
+  sample_distribution <- runif(n = n_*100, min = min, max = max) #generate uniform distribution
   cutoff_distribution <- NULL
-  while(length(cutoff_distribution) <n){
+  while(length(cutoff_distribution) <n_){
     #iterate until getting n cutoffs with distance > dist
     cutoffs <- sample(sample_distribution,size = 2)
     cutoffs <- sort(cutoffs)
@@ -474,24 +481,26 @@ get_random_threshold <- function(min,max, n, dist = 10){
   return(cutoff_distribution)
 }
 
+lapply(unique(metadata$drug), function(drug_idx){
+  tmp <- subset(metadata, drug == drug_idx)
+  tmp$conc <- tmp %>%  dplyr::group_indices(conc)
+  return(tmp)
+}) -> metadata
 
-# iterate over thresholds and calculate pvals/fdr
+metadata <- do.call(rbind, metadata)
 
-lapply(unique(filtered_data$Drug), function(drug_idx){
-  #drug_idx = 'Methotrexate'
-  sub_data <- subset(filtered_data, Drug == drug_idx)
+iterate_over_thresholds <-  function(drug_idx,gr24_data,metadata_,data_metab,get_random_threshold_){
+  #drug_idx = '17-AAG'
+  sub_data <- subset(gr24_data, Drug == drug_idx)
   min_value <- min(sub_data$percent_change_GR)
   max_value <- max(sub_data$percent_change_GR)
-  thresholds <- get_random_threshold(min_value,max_value,500)
-  sub_meta <- subset(metadata, drug ==drug_idx)
-  sub_meta$conc <- sub_meta %>% dplyr::group_by(conc) %>%  dplyr::group_indices(conc)
+  thresholds <- get_random_threshold_(min=min_value,max=max_value,n_=500)
+  sub_meta <- metadata_[metadata_$drug==drug_idx,]
   sub_meta$cell_conc <- paste(sub_meta$cell,sub_meta$conc)
   
   results_comb <- data.frame()
-  
   for(idx in seq_along(thresholds)){
     #idx = 1
-    print(idx)
     sub_data$group <-NA
     sub_data$group <- ifelse(sub_data$percent_change_GR <=thresholds[[idx]][1],'S',sub_data$group)
     sub_data$group <- ifelse(sub_data$percent_change_GR >=thresholds[[idx]][2],'R',sub_data$group)
@@ -500,21 +509,29 @@ lapply(unique(filtered_data$Drug), function(drug_idx){
     #calculate stats between R/S groups
     data_s <- subset(sub_data, group=='S')
     data_s <- sub_meta[sub_meta$cell_conc %in% data_s$cell_conc,]
-    data_s <- data[,data_s$idx]
+    data_s <- data_metab[,data_s$idx]
     data_r <- subset(sub_data, group=='R')
     data_r <- sub_meta[sub_meta$cell_conc %in% data_r$cell_conc,]
-    data_r <- data[,data_r$idx]
-    
-    lapply(1:nrow(data_s),function(met_idx){
-      #met_idx = 1
-      pval <- t.test(data_s[met_idx,],data_r[met_idx,])[[3]]
-      log2fc <- log2(median(data_s[met_idx,])/median(data_r[met_idx,]))
-      
+    data_r <- data_metab[,data_r$idx]
+    if(min(nrow(data_s),nrow(data_r))>3){
+      lapply(1:nrow(data_s),function(met_idx){
+        #met_idx = 1
+        pval <- t.test(data_s[met_idx,],data_r[met_idx,])[[3]]
+        log2fc <- log2(median(data_s[met_idx,])/median(data_r[met_idx,]))
+        
+        return(data.frame(drug = drug_idx,
+                          t1=thresholds[[idx]][1],
+                          t2=thresholds[[idx]][2],
+                          log2fc=log2fc,
+                          pval=pval))
+      }) ->results 
+    }else{
       return(data.frame(drug = drug_idx,
                         t1=thresholds[[idx]][1],
                         t2=thresholds[[idx]][2],
-                        log2fc=log2fc,pval))
-    }) ->results
+                        log2fc=NA,
+                        pval=NA))
+    }
     
     results <- do.call(rbind, results)
     results_comb <- rbind(results_comb,results)
@@ -522,23 +539,18 @@ lapply(unique(filtered_data$Drug), function(drug_idx){
   
   return(results_comb)
 
-}) -> out_thresholds
+}
+
+#iterate_over_thresholds(drug_idx,gr24_data,metadata_,data_metab,get_random_threshold_)  
+
+parLapply(cl=cl,unique(filtered_data$Drug),iterate_over_thresholds,gr24_data = filtered_data,
+                                                                metadata_ = metadata,
+                                                                data_metab = data,
+          get_random_threshold_ = get_random_threshold) -> out_thresholds
 
 
-
+parallel::stopCluster(cl)
  
-#remove drug_conc with no effect
-
-filtered_data <- GR24_RSgroups
-
-low_outliers <- subset(GR24_outliers_low, outliers == 'low')
-
-rows_to_exclude <- paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(low_outliers$Drug, low_outliers$Final_conc_uM)
-
-rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
-
-filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
-
 #save filtered RS groups
 
 setwd(path_data_file)
