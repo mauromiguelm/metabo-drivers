@@ -12,7 +12,7 @@ library(dplyr)
 library(rhdf5)
 library(parallel)
 library(proxy)
-
+library(KEGGREST)
 #import drug sensitity metrics
 
 setwd(path_data_file)
@@ -529,7 +529,7 @@ ggplot(tmp2, aes(y=log2fc,x=log10(GR50), label = cell_line))+
 # #calculate pathway enrichment for R/S groups ------------------------------------
 
 lapply(unique(RS_groups$Drug), function(drug_idx){
-  #drug_idx = 'Methotrexate'
+  #drug_idx = 'BPTES'
   print(drug_idx)
   RS_sub <- subset(RS_groups, Drug == drug_idx & !is.na(percent_change_GR))
   
@@ -538,6 +538,8 @@ lapply(unique(RS_groups$Drug), function(drug_idx){
   sens_sub <-subset(RS_sub, group == 'S')
   
   int_sub <-subset(RS_sub, group == 'I')
+  
+  if(nrow(res_sub)==0 | nrow(sens_sub)==0){return(NULL)}
   
   if(nrow(res_sub) < nrow(sens_sub)){
     #add "I" to balance cases
@@ -639,12 +641,47 @@ lapply(unique(RS_groups$Drug), function(drug_idx){
 
 #plotting enrichment results
 
-setwd("C:\\Users\\masierom\\polybox\\Programing\\GSEA")
-files <- list.files(pattern = "SUMMARY.RESULTS.REPORT")
+#setwd("C:\\Users\\masierom\\polybox\\Programing\\GSEA")
+#files <- list.files(pattern = "SUMMARY.RESULTS.REPORT")
 
-results <- lapply(files, read.delim)
+#results <- lapply(files, read.delim)
+
+
+results <- Output_GSEA
+
+names(results) <- unique(RS_groups$Drug)
+
+lapply(seq_along(results), function(idx,x,y){
+  
+  x = unlist(x, recursive = F)
+  named_result <- data.frame(do.call(rbind,x[idx]))
+  if(nrow(named_result)>0){
+    named_result$drug <- y[idx]
+    return(named_result) 
+  }
+},x = results, y = names(results)) -> results
+
 
 results <- do.call(rbind, results)
+
+results <- subset(results, glob.p.val < 0.05)
+
+path_names <- lapply(results$GS,function(idx){
+  KEGGREST::keggGet(idx)[[1]][[2]]})
+results$path_names <- unlist(path_names)
+
+results$path_names <- gsub(" - Homo sapiens (human)","",results$path_names,fixed = T)
+
+
+
+#plotting results PEA
+
+ggplot(results, aes(x= drug, y=path_names))+
+  geom_tile()+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45,vjust=1,hjust=1))
+  
+
 
 # Compare metabolomics results for R/Sgroups, and see which one is better
 
