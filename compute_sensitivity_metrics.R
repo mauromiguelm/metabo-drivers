@@ -551,6 +551,31 @@ parLapply(cl=cl,unique(filtered_data$Drug),iterate_over_thresholds,gr24_data = f
 
 parallel::stopCluster(cl)
  
+# plotting threshold for each drug 
+
+lapply(seq_along(out_thresholds),function(idx){
+  
+  #idx = 9
+  sub_out <- out_thresholds[[idx]]
+  drug <- unique(sub_out$drug)
+  sub_out$log2fc <- abs(sub_out$log2fc)
+  
+  sub_out$t1t2 <- paste(sub_out$t1,sub_out$t2)
+  sub_out <- sub_out %>%dplyr::group_by(t1,t2) %>% dplyr::summarise(count_fc = sum(log2fc>log2(2)),
+                                                             count_p = sum(pval<0.05),
+                                                             mean_fc = mean(log2fc))
+  setwd(paste0(path_fig,'\\iter_threshold'))
+  
+  ggplot(sub_out, aes(x=t1,y=t2,col = count_fc))+
+    geom_point()+
+    geom_point(data=sub_out[which(sub_out$count_fc == max(sub_out$count_fc)), ], colour="red", size=3)+
+    scale_colour_viridis()->plt
+  
+  ggsave(paste0("ithreshold_drug=",drug,'.png'),plt)
+  
+})
+
+  
 #save filtered RS groups
 
 setwd(path_data_file)
