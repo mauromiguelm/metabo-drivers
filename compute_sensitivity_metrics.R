@@ -18,13 +18,17 @@ cutoff_GR_max_growth_effect <- 50 #pairs of drug & conc with abs change < this n
 cutoff_GR_conc_min_CV <- 10 #pairs of drug & conc with CV < this number will be excluded
 drugs_in_screen <- c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO"))]))
 
-#import metabolomics data
+#import log2fc metabolomics data
 
-setwd(path_metabolomics_in)
-dataContent<- h5ls("metabolomics_raw.h5")
-data<- rhdf5::h5read(file = "metabolomics_raw.h5", '/data')
-ions <- rhdf5::h5read(file = "metabolomics_raw.h5", '/annotation')
-ions <- data.frame(ions)
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
+
+metab_fcs <- do.call(rbind,metab_fcs)
+
+metab_fcs$X <- NULL
+names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+
 
 #import cleaned metadata
 
@@ -453,8 +457,6 @@ low_outliers <- subset(GR24_outliers_low, outliers == 'low')
 rows_to_exclude <- !paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(low_outliers$Drug, low_outliers$Final_conc_uM)
 filtered_data <- filtered_data[rows_to_exclude,]
 
-
-
 library(parallel)
 numWorkers <- 7
 
@@ -481,26 +483,27 @@ get_random_threshold <- function(min,max, n_, dist = 10){
   return(cutoff_distribution)
 }
 
-lapply(unique(metadata$drug), function(drug_idx){
-  tmp <- subset(metadata, drug == drug_idx)
-  tmp$conc <- tmp %>%  dplyr::group_indices(conc)
+lapply(unique(metab_fcs$drug), function(drug_idx){
+  tmp <- subset(metab_fcs, drug == drug_idx)
+  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
   return(tmp)
-}) -> metadata
+}) -> metab_fcs
 
-metadata <- do.call(rbind, metadata)
+metab_fcs <- do.call(rbind, metab_fcs)
 
-iterate_over_thresholds <-  function(drug_idx,gr24_data,metadata_,data_metab,get_random_threshold_){
+iterate_over_thresholds <-  function(drug_idx,gr24_data,data_metab,get_random_threshold_){
   #drug_idx = '17-AAG'
   sub_data <- subset(gr24_data, Drug == drug_idx)
   min_value <- min(sub_data$percent_change_GR)
   max_value <- max(sub_data$percent_change_GR)
-  thresholds <- get_random_threshold_(min=min_value,max=max_value,n_=500)
-  sub_meta <- metadata_[metadata_$drug==drug_idx,]
-  sub_meta$cell_conc <- paste(sub_meta$cell,sub_meta$conc)
+  thresholds <- get_random_threshold_(min=min_value,max=max_value,n_=1000)
+  sub_metab_data <- data_metab[data_metab$drug==drug_idx,]
+  sub_metab_data$cell_conc <- paste(sub_metab_data$cell_line,sub_metab_data$conc)
   
   results_comb <- data.frame()
-  for(idx in seq_along(thresholds)){
-    #idx = 1
+  for(idx in 1:length(thresholds)){
+    #idx = 6
+    #idx = 7
     sub_data$group <-NA
     sub_data$group <- ifelse(sub_data$percent_change_GR <=thresholds[[idx]][1],'S',sub_data$group)
     sub_data$group <- ifelse(sub_data$percent_change_GR >=thresholds[[idx]][2],'R',sub_data$group)
@@ -508,35 +511,27 @@ iterate_over_thresholds <-  function(drug_idx,gr24_data,metadata_,data_metab,get
     sub_data$cell_conc <- paste(sub_data$cell,sub_data$Final_conc_uM)
     #calculate stats between R/S groups
     data_s <- subset(sub_data, group=='S')
-    data_s <- sub_meta[sub_meta$cell_conc %in% data_s$cell_conc,]
-    data_s <- data_metab[,data_s$idx]
+    data_s <- sub_metab_data[sub_metab_data$cell_conc %in% unique(data_s$cell_conc),]
     data_r <- subset(sub_data, group=='R')
-    data_r <- sub_meta[sub_meta$cell_conc %in% data_r$cell_conc,]
-    data_r <- data_metab[,data_r$idx]
-    if(min(nrow(data_s),nrow(data_r))>3){
-      lapply(1:nrow(data_s),function(met_idx){
-        #met_idx = 1
-        pval <- t.test(data_s[met_idx,],data_r[met_idx,])[[3]]
-        log2fc <- log2(median(data_s[met_idx,])/median(data_r[met_idx,]))
+    data_r <- sub_metab_data[sub_metab_data$cell_conc %in% unique(data_r$cell_conc),]
+    
+    lapply(unique(data_s$ionIndex),function(ion_idx){
+      #ion_idx = 2
+      if(min(length(unique(data_r$cell_conc)), length(unique(data_s$cell_conc)))>=2){
+        pval <- t.test(data_s[data_s$ionIndex==ion_idx,'log2fc'],data_r[data_r$ionIndex==ion_idx,'log2fc'])[[3]]
+        log2fc <- abs(median(data_s[data_s$ionIndex==ion_idx,'log2fc'])-median(data_r[data_r$ionIndex==ion_idx,'log2fc']))
         
         return(data.frame(drug = drug_idx,
                           t1=thresholds[[idx]][1],
                           t2=thresholds[[idx]][2],
                           log2fc=log2fc,
-                          pval=pval))
-      }) ->results 
-    }else{
-      return(data.frame(drug = drug_idx,
-                        t1=thresholds[[idx]][1],
-                        t2=thresholds[[idx]][2],
-                        log2fc=NA,
-                        pval=NA))
-    }
+                          pval=pval)) 
+      }
+    }) ->results 
     
     results <- do.call(rbind, results)
     results_comb <- rbind(results_comb,results)
   }
-  
   return(results_comb)
 
 }
@@ -544,8 +539,7 @@ iterate_over_thresholds <-  function(drug_idx,gr24_data,metadata_,data_metab,get
 #iterate_over_thresholds(drug_idx,gr24_data,metadata_,data_metab,get_random_threshold_)  
 
 parLapply(cl=cl,unique(filtered_data$Drug),iterate_over_thresholds,gr24_data = filtered_data,
-                                                                metadata_ = metadata,
-                                                                data_metab = data,
+                                                                data_metab = metab_fcs,
           get_random_threshold_ = get_random_threshold) -> out_thresholds
 
 
