@@ -555,9 +555,14 @@ lapply(seq_along(out_thresholds),function(idx){
   sub_out$log2fc <- abs(sub_out$log2fc)
   
   sub_out$t1t2 <- paste(sub_out$t1,sub_out$t2)
-  sub_out <- sub_out %>%dplyr::group_by(t1,t2) %>% dplyr::summarise(count_fc = sum(log2fc>log2(2)),
+  
+  #remove not significant ions
+  sub_out <- subset(sub_out, pval<0.05)
+  
+  sub_out <- sub_out %>%dplyr::group_by(t1,t2) %>% dplyr::summarise(count_fc = sum(log2fc>log2(3/2)),
                                                              count_p = sum(pval<0.05),
                                                              mean_fc = mean(log2fc))
+  
   setwd(paste0(path_fig,'\\iter_threshold'))
   
   ggplot(sub_out, aes(x=t1,y=t2,col = count_fc))+
@@ -565,11 +570,58 @@ lapply(seq_along(out_thresholds),function(idx){
     geom_point(data=sub_out[which(sub_out$count_fc == max(sub_out$count_fc)), ], colour="red", size=3)+
     scale_colour_viridis()->plt
   
-  ggsave(paste0("ithreshold_drug=",drug,'.png'),plt)
+  ggsave(paste0("ithreshold_drug=",drug,'_log2fc_pval_filter.png'),plt)
   
 })
 
+#determine the number of conditions per threshold for each drug
+
+
+
+lapply(seq_along(out_thresholds),function(idx){
   
+  sub_out <- out_thresholds[[idx]]
+  drug <- unique(sub_out$drug)
+  sub_out$log2fc <- abs(sub_out$log2fc)
+  
+  sub_out$t1t2 <- paste(sub_out$t1,sub_out$t2)
+  
+  #remove not significant ions
+  sub_out <- subset(sub_out, pval<0.05)
+  
+  sub_out <- sub_out %>%dplyr::group_by(t1,t2) %>% dplyr::summarise(count_fc = sum(log2fc>log2(3/2)),
+                                                                    count_p = sum(pval<0.05),
+                                                                    mean_fc = mean(log2fc))
+  
+    
+  threshold <- sub_out[which(sub_out$count_fc == max(sub_out$count_fc)), ][1,]
+  
+  gr24_data <- subset(filtered_data,Drug == drug )
+  
+  sens <- sum(gr24_data$percent_change_GR <= threshold$t1)
+  
+  res <- sum(gr24_data$percent_change_GR >= threshold$t2)
+  
+  
+  int <- sum(gr24_data$percent_change_GR < threshold$t2 &
+        gr24_data$percent_change_GR > threshold$t1)
+  
+  out <- data.frame(drug,threshold$t1,threshold$t2,threshold$count_fc,sens,int,res)
+  
+  return(out)
+  
+}) -> counted_groups
+
+  
+counted_groups <- do.call(rbind,counted_groups)
+
+# save results
+setwd(path_data_file)
+
+write.csv(file = 'counted_groups_ithreshold_GR24.csv',x = counted_groups)
+
+save(list="out_thresholds",file='iter_threshold_GR24.Rdata')
+
 #save filtered RS groups
 
 setwd(path_data_file)
