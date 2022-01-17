@@ -246,7 +246,7 @@ heatmaply(as.matrix(wide_result))
 plt <- gplots::heatmap.2(as.matrix(wide_result),symm = T,trace = 'none', col=col)
 dev.off()
 
-# association GI50 with log2fc --------
+# association GR24 with log2fc --------
 #TODO bootstrap to for slope cutoff
 #TODO run bootstrap for each drug
 # lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
@@ -263,41 +263,31 @@ names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionInde
 lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug_ion){
   #for every ion in each drug associate with GR50
   print(drug_ion)
-  #drug_ion <-  "UK5099_1"
+  #drug_ion <-  "Decitabine_1"
   
   tmp <- subset(metab_fcs, drug == strsplit(drug_ion, split = "_")[[1]][1] &
                 ionIndex == as.numeric(strsplit(drug_ion, split = "_")[[1]][2]))
   
-  tmp_growth_metrics <- subset(data_GR50, agent == strsplit(drug_ion, split = "_")[[1]][1], select=c("cell_line", 'GR50'))
+  tmp$conc <- tmp %>% dplyr::group_by(concentration) %>%  dplyr::group_indices(concentration)
+  tmp$cell_conc <- paste(tmp$cell_line, tmp$conc,sep = "_")
   
-  if(nrow(tmp_growth_metrics) > 0 & sum(is.finite(tmp_growth_metrics$GR50))>=3){
+  
+  tmp_growth_metrics <- subset(RS_groups, Drug == strsplit(drug_ion, split = "_")[[1]][1], select=c("cell",'Final_conc_uM', 'percent_change_GR'))
+  
+  tmp_growth_metrics <- subset(tmp_growth_metrics, !is.na(percent_change_GR))
+  
+  tmp_growth_metrics$cell_conc <- paste(tmp_growth_metrics$cell, tmp_growth_metrics$Final_conc_uM,sep = "_")
+  
+  if(nrow(tmp_growth_metrics) > 10){
     #only include drugs where n of defined G50 is higher or equal than 3
-    
-    #remove Inf and replace by a very high concentration, defining these cells as resistant
-    tmp_growth_metrics$GR50  <- ifelse(tmp_growth_metrics$GR50 == Inf, max(tmp_growth_metrics$GR50[is.finite(tmp_growth_metrics$GR50)],na.rm = T)*10, tmp_growth_metrics$GR50)
     
     #combine metabolomics with GR50
     
-    tmp <- merge(tmp, tmp_growth_metrics, by = "cell_line")
-    
-    tmp <- tmp%>% dplyr::group_by(cell_line,drug)%>% dplyr::arrange(concentration) %>% dplyr::mutate(concentration = sequence(n()))
-    
-    #filter too strong concentrations and ineffective concentrations
-    #remove drug_conc with no effect
-    
-    drug_conc_to_remove <- subset(GR24_outliers_low,outliers == "low" & Drug == strsplit(drug_ion, split = "_")[[1]][1], select =c('Drug', 'Final_conc_uM') )
-    
-    tmp <- tmp[!paste(tmp$drug,tmp$concentration, sep = "_") %in% paste(drug_conc_to_remove$Drug,drug_conc_to_remove$Final_conc_uM, sep = "_"),]
-    
-    # remove cell_drug_conc with too strong effect at GR24
-    
-    drug_conc_to_remove <- subset(GR24_outliers_high,outliers == 'high' & Drug == strsplit(drug_ion, split = "_")[[1]][1], select =c('Drug','cell', 'Final_conc_uM') )
-    
-    tmp <- tmp <- tmp[!paste(tmp$cell_line,tmp$drug,tmp$concentration, sep = "_") %in% paste(drug_conc_to_remove$cell,drug_conc_to_remove$Drug,drug_conc_to_remove$Final_conc_uM, sep = "_"),]
+    tmp <- merge(tmp, tmp_growth_metrics, by = "cell_conc")
     
     #calculate linear regression intensity vs. GI50
     
-    slope <- lm(log2fc~log10(GR50), tmp)
+    slope <- lm(log2fc~log10(percent_change_GR), tmp)
     
     pvalue <- summary(slope)
     
@@ -310,18 +300,16 @@ lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug
   
 }) -> slope_metabolite_effect_on_growth
 
-
 slope_metabolite_effect_on_growth <- do.call(rbind, slope_metabolite_effect_on_growth)
 
 slope_metabolite_effect_on_growth <-data.frame(slope_metabolite_effect_on_growth)
 
-slope_metabolite_effect_on_growth$log10.GR50. <- as.numeric(slope_metabolite_effect_on_growth$log10.GR50.)
+slope_metabolite_effect_on_growth$log10.percent_change_GR. <- as.numeric(slope_metabolite_effect_on_growth$log10.percent_change_GR.)
 slope_metabolite_effect_on_growth$V4 <- as.numeric(slope_metabolite_effect_on_growth$V4)
 slope_metabolite_effect_on_growth$V5 <- as.numeric(slope_metabolite_effect_on_growth$V5)
 
-slope_metabolite_effect_on_growth <- stringr::str_split_fixed(string = tmp[,1],"_",n = 2)
 
-slope_metabolite_effect_on_growth <- cbind(slope_metabolite_effect_on_growth, tmp[,-c(1)])
+slope_metabolite_effect_on_growth <- cbind(stringr::str_split_fixed(string = slope_metabolite_effect_on_growth$V1,"_",n = 2),slope_metabolite_effect_on_growth[,-c(1)])
 
 slope_metabolite_effect_on_growth <- data.frame(slope_metabolite_effect_on_growth)
 
@@ -331,7 +319,7 @@ colnames(slope_metabolite_effect_on_growth) <- c('drug', 'ionIndex', 'slope', 'r
 
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
-write.csv(slope_metabolite_effect_on_growth, 'metabolite_GI50_association.csv')
+write.csv(slope_metabolite_effect_on_growth, 'metabolite_GR24_association.csv')
 
 # baseline vs drug treated ion compairison --------------------------------
 #TODO bootstrap to for slope cutoff
@@ -422,29 +410,29 @@ df$drugion <- paste(df$drug, df$ionIndex)
 
 df <- df[order(df$drug),]
 
-# combine log2fc/GI50 association with basal/treated metabolome association
-
-basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
-
-df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
-
-df$slope.y <- as.numeric(df$slope.y)
+# # combine log2fc/GI50 association with basal/treated metabolome association
+# 
+# basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
+# 
+# df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
+# 
+# df$slope.y <- as.numeric(df$slope.y)
 
 #plot with circlize
 
 library(circlize)
 
 df$x=0
-df$color <- ifelse(df$slope.x<0, "#FF0000", "#00FF00")
+df$color <- ifelse(df$slope<0, "#FF0000", "#00FF00")
 circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
 setwd(path_fig)
 
 par(mar = c(500, 800, 400, 200) + 100)
-png("association_GI50_metabolite.png",width = 10000,height = 10000,res = 700) 
+png("association_GR24_metabolite.png",width = 10000,height = 10000,res = 700) 
 
 circos.initialize(df$drug, x = (df$slope_norm))
 
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$slope,
              panel.fun = function(x, y) {
                circos.axis(major.tick = F,labels = NULL)
   },bg.border = NA)
@@ -452,24 +440,22 @@ circos.track(df$drug, y =df$slope.x,
 circos.trackText(sectors = df$drug,x = df$slope_norm, y= df$x, labels = df$name, 
                  cex= 0.8,track.index = 1,facing = 'clockwise',col = df$color,adj =  c(0),niceFacing = T)
 
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$slope,
              panel.fun = function(x, y) {
                circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
 
-circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x+2,cex = abs(df$slope.x)+0.5, col = df$color,pch = 16) 
+circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x+17,cex = abs(df$slope)*0.3, col = df$color,pch = 16) 
 
-circos.track(df$drug, y =df$slope.x,
+
+#here
+
+circos.track(df$drug, y =df$slope,
              panel.fun = function(x, y) {
                circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
-col2 = colorRamp2(c(min(df$slope.y), 1, max(df$slope.y)), c("blue", "grey", "red"))
-
-
-df$color2 <- col2(df$slope.y)
-circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x+4,col = df$color2 ,pch = 16) 
 
 color = viridis::viridis(nrow(df))
 i=1
@@ -479,11 +465,11 @@ for(x in (df$drug)){
 }
 
 
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$slope,
              panel.fun = function(x, y) {
                circos.text(CELL_META$xcenter, 
                            CELL_META$cell.ylim[2] + mm_y(1), 
-                           CELL_META$sector.index,cex = 1.5,facing = 'clockwise',niceFacing = T)
+                           CELL_META$sector.index,cex = 1,facing = 'clockwise',niceFacing = T)
              },bg.border = NA)
 
 
