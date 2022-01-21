@@ -259,6 +259,15 @@ metab_fcs <- do.call(rbind,metab_fcs)
 metab_fcs$X <- NULL
 names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
 
+lapply(unique(metab_fcs$drug), function(drug_idx){
+  tmp <- subset(metab_fcs, drug == drug_idx)
+  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
+  return(tmp)
+}) -> metab_fcs
+
+metab_fcs <- do.call(rbind, metab_fcs)
+
+
 #TODO bootstrap to for slope cutoff
 #TODO run bootstrap for each drug
 
@@ -266,18 +275,16 @@ names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionInde
 #for every drug, run 100.000 iterations
 #distribute these iterations across all ions
 
-lapply(unique(metab_fcs$drug),function(drug_idx, nboot=100000){
-  print(drug_idx)
+bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, nboot=100000){
   #drug_idx = 'Methotrexate'
   
   #distribute nboot across all ions
   
-  tmp <- subset(metab_fcs, drug == drug_idx)
+  tmp <- subset(fc_data, drug == drug_idx)
   
-  tmp$conc <- tmp %>% dplyr::group_by(concentration) %>%  dplyr::group_indices(concentration)
   tmp$cell_conc <- paste(tmp$cell_line, tmp$conc,sep = "_")
   
-  tmp_growth_metrics <- subset(RS_groups, Drug == drug_idx, select=c("cell",'Final_conc_uM', 'percent_change_GR'))
+  tmp_growth_metrics <- subset(pheno_data, Drug == drug_idx, select=c("cell",'Final_conc_uM', 'percent_change_GR'))
   
   tmp_growth_metrics <- subset(tmp_growth_metrics, !is.na(percent_change_GR))
   
@@ -308,7 +315,6 @@ lapply(unique(metab_fcs$drug),function(drug_idx, nboot=100000){
   out_boot <- data.frame()
   
   for(ion_idx in 1:nions){
-    
     #ion_idx=1
     
     tmp_ion <- subset(tmp, ionIndex == ion_idx)
@@ -332,7 +338,21 @@ lapply(unique(metab_fcs$drug),function(drug_idx, nboot=100000){
   return(out_boot)
   
   
-}) -> bootstrap_association_ion_drug_effect
+} 
+
+numWorkers <- 7
+
+cl <-makeCluster(numWorkers, type="PSOCK")
+
+system.time({
+  results <- parallel::parLapply(cl=cl,unique(metab_fcs$drug), bootstrap_association_ion_drug_effect, fc_data=metab_fcs,
+                                 pheno_data = RS_groups)
+})
+
+parallel::stopCluster(cl)
+
+rm(cl)
+
 
 #calculate metrics for each drug_ions of log2fc vs. GR24
 
