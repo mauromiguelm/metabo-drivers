@@ -8,7 +8,7 @@ path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_cult
 load("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data\\growth_curves_filtered.RData")
 
 library(dplyr); library(tidyr); library(ggplot2);library(gplots);library(RColorBrewer)
-library(plyr)
+library(plyr);library(viridis)
 
 devtools::load_all("C:\\Users\\masierom\\polybox\\Programing\\GRmetrics_GI50")
 devtools::load_all("C:\\Users\\masierom\\polybox\\Programing\\tdsR")
@@ -386,10 +386,17 @@ lapply(unique(tmp$Drug), function(drug_idx){
   
 })
 
+# define groups R/S based on GR24 ----------------------------
 
-# Remove GR24 outliers ----------------------------------------------------
+# Remove GR24 outliers
 # remove pairs of drug_conc that are inefective across all CCLs or that are too strong
 #low = drug_conc without effect across all CCLs
+
+#import GR24 data
+
+setwd(path_data_file)
+
+output_GR24 <- read.csv("outcomes_GR24.csv")
 
 #calculate CV
 GR24_outliers_low <- output_GR24 %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
@@ -446,8 +453,6 @@ heatmap.2(as.matrix(tmp), trace="none", key=T,col = rev(RColorBrewer::brewer.pal
           cexRow = 1.5,cexCol = 2.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',cellnote = exclusions,notecol="black",notecex=2)
 dev.off()
 
-# define groups R/S based on GR24 ----------------------------
-
 # create R/S groups based on GR24 results
 
 #remove concentrations with no effect
@@ -459,7 +464,6 @@ filtered_data <- filtered_data[rows_to_exclude,]
 
 library(parallel)
 numWorkers <- 7
-
 
 setwd(path_data_file)
 cl <-makeCluster(numWorkers, type="PSOCK",outfile = "tmp_err.txt")
@@ -512,7 +516,7 @@ iterate_over_thresholds <-  function(drug_idx,gr24_data,data_metab,get_random_th
     #calculate stats between R/S groups
     data_s <- subset(sub_data, group=='S')
     data_s <- sub_metab_data[sub_metab_data$cell_conc %in% unique(data_s$cell_conc),]
-    data_r <- subset(sub_data, group=='R')
+    data_r <- subset(sub_data, group=='I')
     data_r <- sub_metab_data[sub_metab_data$cell_conc %in% unique(data_r$cell_conc),]
     
     lapply(unique(data_s$ionIndex),function(ion_idx){
@@ -574,9 +578,7 @@ lapply(seq_along(out_thresholds),function(idx){
   
 })
 
-#determine the number of conditions per threshold for each drug
-
-
+#determine the number of cell_conc_groups per threshold
 
 lapply(seq_along(out_thresholds),function(idx){
   
