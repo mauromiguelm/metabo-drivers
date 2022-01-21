@@ -247,10 +247,9 @@ plt <- gplots::heatmap.2(as.matrix(wide_result),symm = T,trace = 'none', col=col
 dev.off()
 
 # association GR24 with log2fc --------
-#TODO bootstrap to for slope cutoff
-#TODO run bootstrap for each drug
 # lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
 # import log2fc data 
+
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
@@ -259,6 +258,83 @@ metab_fcs <- do.call(rbind,metab_fcs)
 
 metab_fcs$X <- NULL
 names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+
+#TODO bootstrap to for slope cutoff
+#TODO run bootstrap for each drug
+
+
+#for every drug, run 100.000 iterations
+#distribute these iterations across all ions
+
+lapply(unique(metab_fcs$drug),function(drug_idx, nboot=100000){
+  print(drug_idx)
+  #drug_idx = 'Methotrexate'
+  
+  #distribute nboot across all ions
+  
+  tmp <- subset(metab_fcs, drug == drug_idx)
+  
+  tmp$conc <- tmp %>% dplyr::group_by(concentration) %>%  dplyr::group_indices(concentration)
+  tmp$cell_conc <- paste(tmp$cell_line, tmp$conc,sep = "_")
+  
+  tmp_growth_metrics <- subset(RS_groups, Drug == drug_idx, select=c("cell",'Final_conc_uM', 'percent_change_GR'))
+  
+  tmp_growth_metrics <- subset(tmp_growth_metrics, !is.na(percent_change_GR))
+  
+  tmp_growth_metrics$cell_conc <- paste(tmp_growth_metrics$cell, tmp_growth_metrics$Final_conc_uM,sep = "_")
+  
+  tmp <- merge(tmp, tmp_growth_metrics, by = "cell_conc")
+  
+  nions <- length(unique(tmp$ionIndex))
+  
+  iter_nr <- round(nboot/nions)
+  
+  iter_per_ion <- rep(iter_nr,nions)
+  
+  residual <- sum(iter_per_ion)-nboot
+  
+  #correct iterations for the residual of nboot
+  
+  iter_per_ion[sample(1:nions, abs(residual))] <- iter_nr - residual/abs(residual)
+  
+  stopifnot(sum(iter_per_ion)==nboot)
+  
+  #create permutations
+  
+  perm_df <- t(replicate(iter_nr, sample(tmp_growth_metrics$percent_change_GR)))
+  
+  #for every ion in each drug associate with GR50
+  
+  out_boot <- data.frame()
+  
+  for(ion_idx in 1:nions){
+    
+    #ion_idx=1
+    
+    tmp_ion <- subset(tmp, ionIndex == ion_idx)
+  
+    count_iter <- 0
+  
+    while(count_iter < iter_per_ion[ion_idx]){
+      
+      slope <- lm(log2fc~log10(perm_df[count_iter+1,]), tmp_ion)
+      
+      pvalue <- summary(slope)
+      
+      out_boot <- rbind(out_boot, data.frame(ion_idx,slope$coefficients[[2]],pvalue$r.squared,pvalue$adj.r.squared,pvalue$coefficients[2,4]))
+      
+      count_iter = count_iter +1
+    }
+    
+    
+  }
+  
+  return(out_boot)
+  
+  
+}) -> bootstrap_association_ion_drug_effect
+
+#calculate metrics for each drug_ions of log2fc vs. GR24
 
 lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug_ion){
   #for every ion in each drug associate with GR50
