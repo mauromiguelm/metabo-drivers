@@ -308,7 +308,7 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
   
   #create permutations
   
-  perm_df <- t(replicate(iter_nr, sample(tmp_growth_metrics$percent_change_GR)))
+  perm_df <- t(replicate(iter_nr, sample(length(unique(tmp$cell_conc)), replace = FALSE, prob = NULL)))
   
   #for every ion in each drug associate with GR50
   
@@ -323,7 +323,7 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
   
     while(count_iter < iter_per_ion[ion_idx]){
       
-      slope <- lm(log2fc~log10(perm_df[count_iter+1,]), tmp_ion)
+      slope <- lm(log2fc~log10(tmp_ion$percent_change_GR[perm_df[count_iter+1,]]), tmp_ion)
       
       pvalue <- summary(slope)
       
