@@ -276,10 +276,10 @@ metab_fcs <- do.call(rbind, metab_fcs)
 #distribute these iterations across all ions
 
 bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, nboot=100000){
-  #drug_idx = 'Methotrexate'
+  #drug_idx = 'Oxfenicine'
   
   #distribute nboot across all ions
-  
+  print(paste('drug:',paste(drug_idx),'is not running'))
   tmp <- subset(fc_data, drug == drug_idx)
   
   tmp$cell_conc <- paste(tmp$cell_line, tmp$conc,sep = "_")
@@ -300,15 +300,17 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
   
   residual <- sum(iter_per_ion)-nboot
   
-  #correct iterations for the residual of nboot
-  
-  iter_per_ion[sample(1:nions, abs(residual))] <- iter_nr - residual/abs(residual)
-  
-  stopifnot(sum(iter_per_ion)==nboot)
-  
-  out_boot <- data.frame()
-  
   if(length(unique(tmp$cell_conc))>10){
+    #make sure df is not empty
+  
+    #correct iterations for the residual of nboot
+  
+    iter_per_ion[sample(1:nions, abs(residual))] <- iter_nr - residual/abs(residual)
+    
+    stopifnot(sum(iter_per_ion)==nboot)
+    
+    out_boot <- data.frame()
+    
     
     #create permutations
     
@@ -320,6 +322,7 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
     
     for(ion_idx in 1:nions){
       #ion_idx=1
+      print(paste(drug_idx,ion_idx))
       
       tmp_ion <- subset(tmp, ionIndex == ion_idx)
       
@@ -336,15 +339,14 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
         count_iter = count_iter +1
         
         }
-      }
-    
-    
+    }
+    print(paste('drug:',paste(drug_idx),'job finished'))
   }
   
   return(out_boot)
   
   
-} 
+}
 
 numWorkers <- 7
 
@@ -365,7 +367,7 @@ rm(cl)
 lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug_ion){
   #for every ion in each drug associate with GR50
   print(drug_ion)
-  #drug_ion <-  "Decitabine_1"
+  #drug_ion <-  "Decitabine"
   
   tmp <- subset(metab_fcs, drug == strsplit(drug_ion, split = "_")[[1]][1] &
                 ionIndex == as.numeric(strsplit(drug_ion, split = "_")[[1]][2]))
