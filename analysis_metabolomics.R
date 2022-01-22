@@ -306,31 +306,37 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
   
   stopifnot(sum(iter_per_ion)==nboot)
   
-  #create permutations
-  
-  perm_df <- t(replicate(iter_nr, sample(length(unique(tmp$cell_conc)), replace = FALSE, prob = NULL)))
-  
-  #for every ion in each drug associate with GR50
-  
   out_boot <- data.frame()
   
-  for(ion_idx in 1:nions){
-    #ion_idx=1
+  if(length(unique(tmp$cell_conc))>10){
     
-    tmp_ion <- subset(tmp, ionIndex == ion_idx)
-  
-    count_iter <- 0
-  
-    while(count_iter < iter_per_ion[ion_idx]){
+    #create permutations
+    
+    perm_df <- t(replicate(iter_nr, sample(length(unique(tmp$cell_conc)), replace = FALSE, prob = NULL)))
+    
+    #for every ion in each drug associate with GR50
+    
+    
+    
+    for(ion_idx in 1:nions){
+      #ion_idx=1
       
-      slope <- lm(log2fc~log10(tmp_ion$percent_change_GR[perm_df[count_iter+1,]]), tmp_ion)
+      tmp_ion <- subset(tmp, ionIndex == ion_idx)
       
-      pvalue <- summary(slope)
+      count_iter <- 0
       
-      out_boot <- rbind(out_boot, data.frame(ion_idx,slope$coefficients[[2]],pvalue$r.squared,pvalue$adj.r.squared,pvalue$coefficients[2,4]))
-      
-      count_iter = count_iter +1
-    }
+      while(count_iter < iter_per_ion[ion_idx]){
+        
+        slope <- lm(log2fc~log10(tmp_ion$percent_change_GR[perm_df[count_iter+1,]]), tmp_ion)
+        
+        pvalue <- summary(slope)
+        
+        out_boot <- rbind(out_boot, data.frame(ion_idx,slope$coefficients[[2]],pvalue$r.squared,pvalue$adj.r.squared,pvalue$coefficients[2,4]))
+        
+        count_iter = count_iter +1
+        
+        }
+      }
     
     
   }
@@ -342,7 +348,7 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
 
 numWorkers <- 7
 
-cl <-makeCluster(numWorkers, type="PSOCK")
+cl <-makeCluster(numWorkers, type="PSOCK",outfile = "tmp_err_boot-association.txt")
 
 system.time({
   results <- parallel::parLapply(cl=cl,unique(metab_fcs$drug), bootstrap_association_ion_drug_effect, fc_data=metab_fcs,
