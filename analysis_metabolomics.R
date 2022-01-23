@@ -300,7 +300,10 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
   
   residual <- sum(iter_per_ion)-nboot
   
+  
   if(length(unique(tmp$cell_conc))>10){
+    
+    out_boot <- data.frame()
     #make sure df is not empty
   
     #correct iterations for the residual of nboot
@@ -308,9 +311,6 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
     iter_per_ion[sample(1:nions, abs(residual))] <- iter_nr - residual/abs(residual)
     
     stopifnot(sum(iter_per_ion)==nboot)
-    
-    out_boot <- data.frame()
-    
     
     #create permutations
     
@@ -341,10 +341,9 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
         }
     }
     print(paste('drug:',paste(drug_idx),'job finished'))
+    
+    return(out_boot)
   }
-  
-  return(out_boot)
-  
   
 }
 
