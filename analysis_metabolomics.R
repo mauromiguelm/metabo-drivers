@@ -360,6 +360,41 @@ parallel::stopCluster(cl)
 
 rm(cl)
 
+#save results bootstrap
+
+
+setwd(paste0(path_data_file,"\\metabolomics\\log2fc"))
+
+names(results) <- unique(metab_fcs$drug)
+
+save(results,file = 'bootstrap_results.Rdata')
+
+#report bootstrapconfidence interval as table 
+
+lapply(names(results), function(drug_idx){
+  
+  #drug_idx = 'Fluorouracil'
+  tmp <- results[[drug_idx]]
+  
+  
+  #get 0.025 and 0.975 quantiles which correcponds to 95% CI for the distribution
+  conf_intervals <- t(data.frame(quantile(tmp$slope.coefficients..2..,probs = c(0.025, 0.975))))
+  
+  rownames(conf_intervals) <- drug_idx
+  
+  #plot results 
+  
+  return(conf_intervals)
+  
+})-> bootstrap_ci
+
+bootstrap_ci <- do.call(rbind, bootstrap_ci)
+
+#save confidence interval results 
+
+setwd(paste0(path_data_file,"\\metabolomics\\log2fc"))
+
+write.csv(bootstrap_ci,file = 'confidence_intervals_from_permutation.csv')
 
 #calculate metrics for each drug_ions of log2fc vs. GR24
 
