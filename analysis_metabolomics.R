@@ -362,27 +362,30 @@ rm(cl)
 
 #save results bootstrap
 
-
 setwd(paste0(path_data_file,"\\metabolomics\\log2fc"))
 
 names(results) <- unique(metab_fcs$drug)
 
 save(results,file = 'bootstrap_results.Rdata')
 
-#report bootstrapconfidence interval as table 
+#report bootstrap confidence interval as table 
 
 lapply(names(results), function(drug_idx){
   
-  #drug_idx = 'Fluorouracil'
+  #drug_idx = 'Methotrexate'
   tmp <- results[[drug_idx]]
   
   
   #get 0.025 and 0.975 quantiles which correcponds to 95% CI for the distribution
-  conf_intervals <- t(data.frame(quantile(tmp$slope.coefficients..2..,probs = c(0.025, 0.975))))
+  conf_intervals <- t(data.frame(quantile(tmp$slope.coefficients..2..,probs = c(0.005, 0.995))))
   
   rownames(conf_intervals) <- drug_idx
   
   #plot results 
+  
+  #hist(tmp$slope.coefficients..2..,breaks = 1000)
+  #abline(v=conf_intervals[1],col="blue",lwd=2)
+  #abline(v=conf_intervals[2],col="red",lwd=2)
   
   return(conf_intervals)
   
@@ -394,7 +397,7 @@ bootstrap_ci <- do.call(rbind, bootstrap_ci)
 
 setwd(paste0(path_data_file,"\\metabolomics\\log2fc"))
 
-write.csv(bootstrap_ci,file = 'confidence_intervals_from_permutation.csv')
+write.csv(bootstrap_ci,file = 'confidence_intervals_from_permutation_1.csv')
 
 #calculate metrics for each drug_ions of log2fc vs. GR24
 
@@ -459,9 +462,36 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 write.csv(slope_metabolite_effect_on_growth, 'metabolite_GR24_association.csv')
 
+#select the ions that survived permutation thresohld
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+df <- read.csv('metabolite_GR24_association.csv')
+
+lapply(unique(df$drug), function(drug_idx){
+  
+  tmp <- subset(df, drug == drug_idx & !is.na(slope))
+  
+  if(nrow(tmp)>1){
+    tmp_ci <- bootstrap_ci[drug_idx,]
+    
+    tmp <- subset(tmp,slope < tmp_ci[1] | slope> tmp_ci[2])
+    
+  }
+  
+  return(tmp)
+}) -> df
+
+df <- do.call(rbind,df)
+
+#save associations
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+write.csv(df, 'metabolite_GR24_association_survivingCI.csv')
+
+
 # baseline vs drug treated ion compairison --------------------------------
-#TODO bootstrap to for slope cutoff
-#TODO run bootstrap for each drug
 
 lapply(unique(ions$ionIndex), function(ionidx){
   #ionidx = 816
@@ -526,17 +556,11 @@ basal_associations <-data.frame(basal_associations)
 colnames(basal_associations) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', 'pvalue')
 
 # plot most interesting associations for each drug -----------------------
-#select the top 5 abs(log2fc) for each drug
+#select the ions that survived permutation thresohld
 
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
-df <- read.csv('metabolite_GI50_association.csv')
-
-df <- subset(df, abs(slope) >= 0.08)
-
-df <- df %>% group_by(drug) %>% dplyr::arrange(abs(slope)) %>% dplyr::slice_tail(n=5)
-
-df <- df %>% group_by(drug) %>%dplyr::arrange(abs(slope)) %>%  dplyr::mutate(slope_norm = c(5:1)[1:n()])
+df <- read.csv('metabolite_GR24_association_survivingCI.csv')
 
 df$color <- ifelse(df$slope<0, "Negative", "Positive")
 
@@ -546,69 +570,82 @@ df <- merge(df, tmp_ions, by='ionIndex')
 
 df$drugion <- paste(df$drug, df$ionIndex)
 
-df <- df[order(df$drug),]
+df <- df %>% group_by(drug) %>% dplyr::arrange(abs(slope)) %>% dplyr::slice_tail(n=10)
 
-# # combine log2fc/GI50 association with basal/treated metabolome association
-# 
-# basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
-# 
-# df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
-# 
-# df$slope.y <- as.numeric(df$slope.y)
+df <- df %>% group_by(drug) %>%dplyr::arrange(abs(slope)) %>%  dplyr::mutate(slope_norm = c(10:1)[1:n()])
+
+# combine log2fc/GI50 association with basal/treated metabolome association
+
+basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
+
+df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
+
+df$slope.y <- as.numeric(df$slope.y)
 
 #plot with circlize
-
 library(circlize)
 
 df$x=0
-df$color <- ifelse(df$slope<0, "#FF0000", "#00FF00")
-circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
+df$color <- ifelse(df$slope.x<0, "#FF0000", "#00FF00")
+#circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
 setwd(path_fig)
 
-par(mar = c(500, 800, 400, 200) + 100)
-png("association_GR24_metabolite.png",width = 10000,height = 10000,res = 700) 
 
+png("association_GR24_metabolite.png",width = 8000,height = 8000,res = 700)
+
+x1 <- x2 <- y1 <-y2 <-0.5
+
+circos.par("track.height" = 0.05,canvas.xlim = c(-(1+x1), 1+x2), canvas.ylim = c(-(1+y1), 1+y2))
 circos.initialize(df$drug, x = (df$slope_norm))
 
-circos.track(df$drug, y =df$slope,
+circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
-               circos.axis(major.tick = F,labels = NULL)
-  },bg.border = NA)
+               #circos.axis(major.tick = F,labels = NULL)
+             },bg.border = NA)
 
-circos.trackText(sectors = df$drug,x = df$slope_norm, y= df$x, labels = df$name, 
-                 cex= 0.8,track.index = 1,facing = 'clockwise',col = df$color,adj =  c(0),niceFacing = T)
+circos.trackText(sectors = df$drug,x = df$slope_norm, y= df$x, labels = df$name,
+                 cex= 0.6,track.index = 1,facing = 'clockwise',col = df$color,adj =  c(0),niceFacing = T)
 
-circos.track(df$drug, y =df$slope,
+circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
-               circos.axis(major.tick = F,labels = NULL)
+               #circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
 
-circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x+17,cex = abs(df$slope)*0.3, col = df$color,pch = 16) 
+circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x,cex = abs(df$slope.x)*0.15, col = df$color,pch = 16)
 
-
-#here
-
-circos.track(df$drug, y =df$slope,
+circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
-               circos.axis(major.tick = F,labels = NULL)
+               #circos.axis(major.tick = F,labels = NULL)
+             },bg.border = NA)
+
+col2 = colorRamp2(c(min(df$slope.y), 1, max(df$slope.y)), c("blue", "grey", "red"))
+
+
+df$color2 <- col2(df$slope.y)
+circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x,col = df$color2 ,pch = 16)
+
+circos.track(df$drug, y =df$slope.x,
+             panel.fun = function(x, y) {
+               #circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
 
 color = viridis::viridis(nrow(df))
 i=1
 for(x in (df$drug)){
-  highlight.sector(track.index = 2,col = color[i],sector.index = x)
+  highlight.sector(track.index = 4,col = color[i],sector.index = x)
   i=i+1
 }
 
-
-circos.track(df$drug, y =df$slope,
+  
+circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
-               circos.text(CELL_META$xcenter, 
-                           CELL_META$cell.ylim[2] + mm_y(1), 
-                           CELL_META$sector.index,cex = 1,facing = 'clockwise',niceFacing = T)
+               circos.text(CELL_META$xcenter,track.index = 5,
+                           CELL_META$cell.ylim[2] - mm_y(5),
+                           CELL_META$sector.index,cex = 0.5,facing = 'clockwise',niceFacing = T)
              },bg.border = NA)
+
 
 
 dev.off()
