@@ -586,7 +586,7 @@ df$slope.y <- as.numeric(df$slope.y)
 library(circlize)
 
 df$x=0
-df$color <- ifelse(df$slope.x<0, "#FF0000", "#00FF00")
+df$color <- ifelse(df$slope.x<0, "#FF0000", "green4")
 #circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
 setwd(path_fig)
 
@@ -595,7 +595,8 @@ png("association_GR24_metabolite.png",width = 8000,height = 8000,res = 700)
 
 x1 <- x2 <- y1 <-y2 <-0.5
 
-circos.par("track.height" = 0.05,canvas.xlim = c(-(1+x1), 1+x2), canvas.ylim = c(-(1+y1), 1+y2))
+circos.par("track.height" = 0.05,canvas.xlim = c(-(1+x1), 1+x2), canvas.ylim = c(-(1+y1), 1+y2),
+           start.degree = 93)
 circos.initialize(df$drug, x = (df$slope_norm))
 
 circos.track(df$drug, y =df$slope.x,
@@ -642,8 +643,8 @@ for(x in (df$drug)){
 circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
                circos.text(CELL_META$xcenter,track.index = 5,
-                           CELL_META$cell.ylim[2] - mm_y(5),
-                           CELL_META$sector.index,cex = 0.5,facing = 'clockwise',niceFacing = T)
+                           CELL_META$cell.ylim[2] - mm_y(13),
+                           CELL_META$sector.index,cex = 1,facing = 'clockwise',niceFacing = T)
              },bg.border = NA)
 
 
@@ -655,35 +656,52 @@ circos.clear()
 #doi = drug of interest
 #iot = ion of interest
 
-doi <- "Panzem-2-ME2"
-iot <- 103
+doi <- "Decitabine"
+iot <- 394
 
 tmp2 <- subset(metab_fcs, ionIndex == iot & drug == doi)
 
-tmp2$experiment <- paste(tmp2$cell_line, tmp2$drug)
+lapply(unique(tmp2$drug), function(drug_idx){
+  tmp <- subset(tmp2, drug == drug_idx)
+  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
+  return(tmp)
+}) -> tmp2
 
-tmp2 <- merge(tmp2, data_GR50[,c('experiment', "GR50")], by = "experiment")
+tmp2 <- do.call(rbind, tmp2)
 
-tmp2$GR50  <- ifelse(tmp2$GR50 == Inf, max(tmp2$GR50[is.finite(tmp2$GR50)],na.rm = T)*10, tmp2$GR50)
 
-#filter too strong concentrations and ineffective concentrations
-#remove drug_conc with no effect
+tmp2$experiment <- paste(tmp2$cell_line, tmp2$drug,tmp2$conc, sep = "_")
 
-tmp2 <- tmp2%>% dplyr::group_by(cell_line,drug)%>% dplyr::arrange(concentration) %>% dplyr::mutate(concentration = sequence(n()))
+tmp_growth_metrics <- subset(RS_groups, select=c('Drug',"cell",'Final_conc_uM', 'percent_change_GR'))
 
-drug_conc_to_remove <- subset(GR24_outliers_low,outliers == "low" & Drug == doi, select =c('Drug', 'Final_conc_uM') )
+tmp_growth_metrics <- subset(tmp_growth_metrics, !is.na(percent_change_GR))
 
-tmp2 <- tmp2[!paste(tmp2$drug,tmp2$concentration, sep = "_") %in% paste(drug_conc_to_remove$Drug,drug_conc_to_remove$Final_conc_uM, sep = "_"),]
+tmp_growth_metrics$experiment <- paste(tmp_growth_metrics$cell,tmp_growth_metrics$Drug, tmp_growth_metrics$Final_conc_uM,sep = "_")
 
-# remove cell_drug_conc with too strong effect at GR24
+tmp2 <- merge(tmp2, tmp_growth_metrics[,c('experiment', "percent_change_GR")], by = "experiment")
 
-drug_conc_to_remove <- subset(GR24_outliers_high,outliers == 'high' & Drug == doi, select =c('Drug','cell', 'Final_conc_uM') )
-
-tmp2 <- tmp2 <- tmp2[!paste(tmp2$cell_line,tmp2$drug,tmp2$concentration, sep = "_") %in% paste(drug_conc_to_remove$cell,drug_conc_to_remove$Drug,drug_conc_to_remove$Final_conc_uM, sep = "_"),]
-
-ggplot(tmp2, aes(y=log2fc,x=log10(GR50), label = cell_line))+
+(ggplot(tmp2, aes(y=log2fc,x=log10(percent_change_GR), label = cell_line))+
   geom_point(col = 'red')+
-  geom_text_repel()
+  ggrepel::geom_text_repel(cex = 3)+
+  theme_bw()+
+  geom_smooth(method='lm', formula= y~x) -> plt)
+
+plt <- plt+theme(axis.title =element_text(size=15))
+
+setwd(paste(path_fig,'specific_examples', sep = "\\"))
+
+ggsave(filename = paste(doi,iot,'.png', sep = "_"), plt,width = 4,height = 3.5,dpi = 300)
+
+# dependency on concentration
+#do increasing concentration change levels of these metabolites
+
+
+ggplot(tmp2, aes(x = factor(conc), y=cell_line, fill = log2fc))+
+  geom_tile()+
+  scale_fill_gradient2(low = "red",mid = 'white', high = "blue",midpoint = 0)+
+  theme_bw()+
+  theme(axis.title =element_text(size=15), axis.text = element_text(size = 15))
+
 
 # RS groups ---------------------------------------------------------------
 
