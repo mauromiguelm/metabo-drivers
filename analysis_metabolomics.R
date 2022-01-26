@@ -484,6 +484,17 @@ lapply(unique(df$drug), function(drug_idx){
 
 df <- do.call(rbind,df)
 
+#plot number of associations per drug
+
+df%>% group_by(drug) %>% summarise(association_count = n()) %>%
+  ggplot(aes(x=reorder(drug,association_count), y=association_count ))+
+  geom_bar(stat = 'identity')+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90,hjust = 1))+
+  xlab('Drug')+
+  ylab('Number of associations')
+
+
 #save associations
 
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
@@ -530,7 +541,7 @@ lapply(unique(ions$ionIndex), function(ionidx){
       data_mean_drug <- data_mean_drug %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = mean(intensities))
       
       comb_data <- merge(data_mean_control, data_mean_drug, by = 'cell')
-      
+      #TODO add log10
       slope <- lm(mean_ion.y~mean_ion.x, comb_data)
       
       pvalue <- summary(slope)
@@ -581,6 +592,9 @@ basal_associations$drugion <- paste(basal_associations$drug, basal_associations$
 df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
 
 df$slope.y <- as.numeric(df$slope.y)
+
+df$slope.y <- ifelse(df$slope.y >=5,2, df$slope.y)
+
 
 #plot with circlize
 library(circlize)
@@ -695,15 +709,53 @@ ggsave(filename = paste(doi,iot,'.png', sep = "_"), plt,width = 4,height = 3.5,d
 # dependency on concentration
 #do increasing concentration change levels of these metabolites
 
-
 ggplot(tmp2, aes(x = factor(conc), y=cell_line, fill = log2fc))+
   geom_tile()+
   scale_fill_gradient2(low = "red",mid = 'white', high = "blue",midpoint = 0)+
   theme_bw()+
   theme(axis.title =element_text(size=15), axis.text = element_text(size = 15))
 
+# plot associations wiht basal metabolism 
 
-# RS groups ---------------------------------------------------------------
+doi <- "Decitabine"
+iot <- 394
+
+RSgroup_sub <- subset(RS_groups, Drug == doi & !is.na(percent_change_GR))
+
+metadata_doi <- subset(metadata, drug == doi)
+
+metadata_doi$conc <- metadata_doi %>% dplyr::group_by(conc) %>%  dplyr::group_indices(conc)
+
+metadata_doi <- subset(metadata_doi, conc %in% unique(RSgroup_sub$Final_conc_uM))
+
+metadata_control <- subset(metadata, cell %in% unique(metadata_doi$cell) & source_plate == unique(metadata_doi$source_plate) & drug == 'DMSO' &
+                             conc == 367)
+
+data_mean_control <- data[iot,metadata_control$idx]
+
+data_mean_control <- cbind(metadata_control,data.frame("intensities" = data_mean_control))
+
+data_mean_control <- data_mean_control %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = median(intensities))
+
+data_mean_drug <- data[iot,metadata_doi$idx]
+
+data_mean_drug <- cbind(metadata_doi,data.frame("intensities" = data_mean_drug))
+
+data_mean_drug <- data_mean_drug %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = median(intensities))
+
+comb_data <- merge(data_mean_control, data_mean_drug, by = 'cell')
+
+comb_data$perfect_fit <- comb_data$mean_ion.x
+
+(ggplot(comb_data, aes(x=log10(mean_ion.x),y=log10(mean_ion.y), label = cell))+
+    geom_point(col = 'red')+
+    ggrepel::geom_text_repel(cex = 3)+
+    theme_bw()+
+    geom_abline(slope = 1, intercept = 0, col = 'red',linetype = "dashed")+
+    geom_smooth(method='lm', formula= y~x) -> plt)
+
+
+# RS groups enrichment ---------------------------------------------------------------
 
 # #calculate pathway enrichment for R/S groups ------------------------------------
 
