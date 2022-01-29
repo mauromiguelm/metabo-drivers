@@ -267,11 +267,6 @@ lapply(unique(metab_fcs$drug), function(drug_idx){
 
 metab_fcs <- do.call(rbind, metab_fcs)
 
-
-#TODO bootstrap to for slope cutoff
-#TODO run bootstrap for each drug
-
-
 #for every drug, run 100.000 iterations
 #distribute these iterations across all ions
 
@@ -501,7 +496,6 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 write.csv(df, 'metabolite_GR24_association_survivingCI.csv')
 
-
 # baseline vs drug treated ion compairison --------------------------------
 
 lapply(unique(ions$ionIndex), function(ionidx){
@@ -557,7 +551,6 @@ lapply(unique(ions$ionIndex), function(ionidx){
   
 }) -> basal_drug_association
 
-
 basal_associations <- unlist(basal_drug_association, recursive = F)
 
 basal_associations <- do.call(rbind, basal_associations)
@@ -566,7 +559,17 @@ basal_associations <-data.frame(basal_associations)
 
 colnames(basal_associations) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', 'pvalue')
 
+
+#save results from basal association
+
+#save associations
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+write.csv(basal_associations, 'basal_association.csv')
+
 # plot most interesting associations for each drug -----------------------
+
 #select the ions that survived permutation thresohld
 
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
@@ -575,9 +578,21 @@ df <- read.csv('metabolite_GR24_association_survivingCI.csv')
 
 df$color <- ifelse(df$slope<0, "Negative", "Positive")
 
-tmp_ions <- ions[,c("ionIndex",'mzLabel','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
+tmp_ions <- ions[,c("ionIndex",'mzLabel','idKEGG','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
 
 df <- merge(df, tmp_ions, by='ionIndex')
+
+#connections between edges igraph
+
+data_cyto <- df[,c('idKEGG','drug','slope')]
+
+data_cyto <- tidyr::separate_rows(data_cyto,idKEGG, convert = TRUE, sep = ' ')
+
+data_cyto <- subset(data_cyto,!grepl("^\\s*$", idKEGG))
+
+data_cyto <- tidyr::pivot_wider(data_cyto,names_from = 'drug',values_from = 'slope')
+
+#plot top 10 associations with circlize
 
 df$drugion <- paste(df$drug, df$ionIndex)
 
@@ -587,6 +602,10 @@ df <- df %>% group_by(drug) %>%dplyr::arrange(abs(slope)) %>%  dplyr::mutate(slo
 
 # combine log2fc/GI50 association with basal/treated metabolome association
 
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+basal_associations <- read.csv('basal_association.csv')
+
 basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
 
 df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
@@ -595,15 +614,12 @@ df$slope.y <- as.numeric(df$slope.y)
 
 df$slope.y <- ifelse(df$slope.y >=5,2, df$slope.y)
 
-
-#plot with circlize
 library(circlize)
 
 df$x=0
 df$color <- ifelse(df$slope.x<0, "#FF0000", "green4")
 #circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
 setwd(path_fig)
-
 
 png("association_GR24_metabolite.png",width = 8000,height = 8000,res = 700)
 
