@@ -246,6 +246,52 @@ heatmaply(as.matrix(wide_result))
 plt <- gplots::heatmap.2(as.matrix(wide_result),symm = T,trace = 'none', col=col)
 dev.off()
 
+# plot one drug 
+
+# make a correlation network
+
+require(xts)
+require(quantmod)
+require(igraph)
+# cor_mat<- matrix( runif(100), nr=10 )
+
+cor_mat <- wide_result
+
+cor_mat[ lower.tri(cor_mat, diag=TRUE) ]<- 0
+
+cor_mat[ abs(cor_mat) < 0.7]<- 0
+
+graph <- graph.adjacency(abs(cor_mat)>0.7, mode="upper",weighted = T)
+
+
+E(graph)$weight<-t(cor_mat)[abs(t(cor_mat))>0.7]
+
+v_names <- sapply(strsplit(V(graph)$name,split = '_'),"[[",2)
+
+discrete_colors <- viridis::viridis(length(unique(v_names)))
+
+v_colors <- factor(v_names,labels = discrete_colors)
+
+V(graph)$color <- v_colors
+
+graph$layout <- layout.circle
+
+map <- data.frame(v_names,v_colors)
+
+map <- map[!duplicated(map[,1]),]
+
+graph$layout <- layout.fruchterman.reingold
+
+png('corr_network.png',width=500) 
+plot(decompose.graph(graph)[[which.max(sapply(decompose.graph(graph), vcount))]],frame=T,
+     edge.arrow.size=0.5, 
+     vertex.label.cex=0.5,vertex.size=3, col = V(graph)$color,vertex.label = NA) 
+legend('topleft',title="Colors", cex=0.75, pch=16, 
+       col=map[,2], 
+       legend=map[,1], ncol=2)
+dev.off()
+
+
 # association GR24 with log2fc --------
 # lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
 # import log2fc data 
@@ -581,6 +627,16 @@ df$color <- ifelse(df$slope<0, "Negative", "Positive")
 tmp_ions <- ions[,c("ionIndex",'mzLabel','idKEGG','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
 
 df <- merge(df, tmp_ions, by='ionIndex')
+
+#number of associations per metabolite with diferent drugs (plot)
+
+tmp <- df %>% group_by(ionIndex) %>% dplyr::summarise(count_metab = n())
+
+ggplot(tmp, aes(x=count_metab, fill = factor(count_metab)))+
+  geom_bar()+
+  scale_fill_manual("legend", values = viridis::rocket(15))+
+  theme_bw()+
+  theme(legend.position = "none")
 
 #connections between edges igraph
 
