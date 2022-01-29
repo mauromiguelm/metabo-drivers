@@ -11,7 +11,7 @@ library(dplyr); library(tidyr); library(ggplot2);library(gplots);library(RColorB
 library(plyr);library(viridis)
 
 devtools::load_all("C:\\Users\\masierom\\polybox\\Programing\\GRmetrics_GI50")
-devtools::load_all("C:\\Users\\masierom\\polybox\\Programing\\tdsR")
+library(tdsR)
 
 time_treatment <- 0
 cutoff_GR_max_growth_effect <- 50 #pairs of drug & conc with abs change < this number will be excluded
@@ -514,9 +514,9 @@ iterate_over_thresholds <-  function(drug_idx,gr24_data,data_metab,get_random_th
     sub_data$group <- ifelse(is.na(sub_data$group),'I',sub_data$group)
     sub_data$cell_conc <- paste(sub_data$cell,sub_data$Final_conc_uM)
     #calculate stats between R/S groups
-    data_s <- subset(sub_data, group=='S')
+    data_s <- subset(sub_data, group=='I')
     data_s <- sub_metab_data[sub_metab_data$cell_conc %in% unique(data_s$cell_conc),]
-    data_r <- subset(sub_data, group=='I')
+    data_r <- subset(sub_data, group=='R')
     data_r <- sub_metab_data[sub_metab_data$cell_conc %in% unique(data_r$cell_conc),]
     
     lapply(unique(data_s$ionIndex),function(ion_idx){
@@ -549,6 +549,8 @@ parLapply(cl=cl,unique(filtered_data$Drug),iterate_over_thresholds,gr24_data = f
 
 parallel::stopCluster(cl)
  
+rm(cl)
+
 # plotting threshold for each drug 
 
 lapply(seq_along(out_thresholds),function(idx){
@@ -574,7 +576,7 @@ lapply(seq_along(out_thresholds),function(idx){
     geom_point(data=sub_out[which(sub_out$count_fc == max(sub_out$count_fc)), ], colour="red", size=3)+
     scale_colour_viridis()->plt
   
-  ggsave(paste0("ithreshold_drug=",drug,'_log2fc_pval_filter.png'),plt)
+  ggsave(paste0("ithreshold_drug=",drug,'_log2fc_pval_filter_RvsI.png'),plt)
   
 })
 
@@ -620,15 +622,15 @@ counted_groups <- do.call(rbind,counted_groups)
 # save results
 setwd(path_data_file)
 
-write.csv(file = 'counted_groups_ithreshold_GR24.csv',x = counted_groups)
+write.csv(file = 'counted_groups_ithreshold_GR24_RvsI.csv',x = counted_groups)
 
-save(list="out_thresholds",file='iter_threshold_GR24.Rdata')
+save(list="out_thresholds",file='iter_threshold_GR24_RvsI.Rdata')
 
 #save filtered RS groups
 
 setwd(path_data_file)
 
-write.csv(filtered_data,'outcomes_GR24_RSgroups_filtered.csv')
+write.csv(filtered_data,'outcomes_GR24_RSgroups_filtered_RvsI.csv')
 
 #plot R/S groups
 
@@ -688,7 +690,6 @@ lapply(unique(tmp$Drug), function(drug_idx){
     
     rownames(text_data) <- tmp_name
     
-    
     setwd(paste(path_fig,'RSgroups', sep = "\\"))
     png(paste("drug=",drug_idx,"percent_change_GR24_filtered.png",sep="_"),height = 1200,width = 1200)
     
@@ -696,13 +697,11 @@ lapply(unique(tmp$Drug), function(drug_idx){
               cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3)
     dev.off()
   
-    
   }
 
 })
-  
 
-  #plot groups on filtered data
+#plot groups on filtered data
 
 col_breaks <- seq(0,120,length.out = 10)
 
