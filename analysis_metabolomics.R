@@ -840,9 +840,98 @@ setwd(path_data_file)
 
 RS_output <- read.csv("outcomes_GR24_RSgroups_filtered.csv")
 
-save(list="out_thresholds",file='iter_threshold_GR24_RvsI.Rdata')
+#import FC data
 
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
+metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
+
+metab_fcs <- do.call(rbind,metab_fcs)
+
+metab_fcs$X <- NULL
+names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+
+lapply(unique(metab_fcs$drug), function(drug_idx){
+  tmp <- subset(metab_fcs, drug == drug_idx)
+  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
+  return(tmp)
+}) -> metab_fcs
+
+metab_fcs <- do.call(rbind, metab_fcs)
+
+lapply(unique(RS_output$Drug), function(drug_idx){
+  #drug_idx = "Erlotinib"
+  RS_sub <- subset(RS_output, Drug == drug_idx & !is.na(percent_change_GR))
+  
+  for(groups_idx in list("R",c("S","I"))){
+    
+    #groups_idx <- c('S','I')
+    groups_idx <- c('R')
+    RS_sub_group <- subset(RS_sub, group %in% groups_idx)
+    
+    data_sub <- subset(metab_fcs, cell_line %in% RS_sub_group$cell & conc %in% RS_sub_group$Final_conc_uM)
+    
+    fcs_sub <- subset(metab_fcs, drug == drug_idx & conc %in% RS_sub_group$Final_conc_uM & cell_line %in% RS_sub_group$cell)
+    
+    #remove lowest concentration
+    
+    fcs_sub <- subset(fcs_sub, conc != 1)
+    
+    #prepare data as wide matrix format for clustering
+    
+    my_palette <- colorRampPalette(c("red", "white", "green"))(n = 299)
+    
+    fcs_sub$cell_conc <- paste(fcs_sub$cell_line, fcs_sub$conc, sep = "_")
+    
+    fcs_sub$log2fc <- ifelse(fcs_sub$log2fc < -2, -2, fcs_sub$log2fc)
+    fcs_sub$log2fc <- ifelse(fcs_sub$log2fc >  2,  2, fcs_sub$log2fc)
+    
+    fcs_sub <- subset(fcs_sub, pvalue < 0.05)
+    
+    fcs_sub <- fcs_sub %>% group_by(ionIndex) %>%  filter(n() >= 6)
+    
+    fcs_sub <- tidyr::pivot_wider(fcs_sub, names_from = cell_conc, values_from = log2fc,id_cols = ionIndex,values_fill = 0)
+    
+    tmp_ions <- ions
+    
+    tmp_ions <- tmp_ions %>% dplyr::group_by(ionIndex) %>% slice(1)
+    
+    my_row_names <- tmp_ions[as.numeric(fcs_sub$ionIndex), "name"]$name
+    
+    fcs_sub$ionIndex <-NULL
+    
+    rownames(fcs_sub) <- my_row_names
+    
+    heatmaply::heatmaply(as.matrix(fcs_sub),  
+              density.info="none",  # turns off density plot inside color legend
+              trace="none",          # turns off trace lines inside the heat map
+              col = my_palette,na.rm = T,
+              show_dendrogram = c(F, F),
+              limits = c(-2,2))
+    
+    heatmaply::heatmaply(as.matrix(fcs_sub),  
+                         density.info="none",  # turns off density plot inside color legend
+                         trace="none",          # turns off trace lines inside the heat map
+                         col = my_palette,na.rm = T, 
+                         file = paste(drug_idx, groups_idx,'.html', sep = "_"))
+    
+    
+    heatm(as.matrix(fcs_sub),  
+                      density.info="none",  # turns off density plot inside color legend
+                      trace="none",          # turns off trace lines inside the heat map
+                      col = my_palette,na.rm = T
+                      )
+
+        
+  }
+  
+  
+  
+  
+  
+  
+  
+})
 
 
 
