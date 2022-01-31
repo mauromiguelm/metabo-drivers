@@ -221,6 +221,10 @@ setwd(paste0(path_data_file,"\\metabolomics","\\similarity"))
 
 results <- read.csv('similarity_results_log2fc.csv')
 
+results <- subset(results,grepl(results[,2],pattern = 'Erlotinib'))
+
+results <- subset(results,grepl(results[,3],pattern = 'Erlotinib'))
+
 tmp <- results
 
 tmp2 <- results
@@ -259,12 +263,13 @@ cor_mat <- wide_result
 
 cor_mat[ lower.tri(cor_mat, diag=TRUE) ]<- 0
 
-cor_mat[ abs(cor_mat) < 0.7]<- 0
+cor_mat[ abs(cor_mat) < 0.6]<- 0
 
-graph <- graph.adjacency(abs(cor_mat)>0.7, mode="upper",weighted = T)
+graph <- graph.adjacency(abs(cor_mat)>0.6, mode="upper",weighted = T)
 
+#E(graph)$weight<-t(cor_mat)[abs(t(cor_mat))>0.7]
 
-E(graph)$weight<-t(cor_mat)[abs(t(cor_mat))>0.7]
+E(graph)$weight<-t(cor_mat)[abs(t(cor_mat))>0.6]
 
 v_names <- sapply(strsplit(V(graph)$name,split = '_'),"[[",2)
 
@@ -285,7 +290,7 @@ graph$layout <- layout.fruchterman.reingold
 png('corr_network.png',width=500) 
 plot(decompose.graph(graph)[[which.max(sapply(decompose.graph(graph), vcount))]],frame=T,
      edge.arrow.size=0.5, 
-     vertex.label.cex=0.5,vertex.size=3, col = V(graph)$color,vertex.label = NA) 
+     vertex.label.cex=0.7,vertex.size=3, col = V(graph)$color) 
 legend('topleft',title="Colors", cex=0.75, pch=16, 
        col=map[,2], 
        legend=map[,1], ncol=2)
@@ -825,6 +830,20 @@ comb_data$perfect_fit <- comb_data$mean_ion.x
     theme_bw()+
     geom_abline(slope = 1, intercept = 0, col = 'red',linetype = "dashed")+
     geom_smooth(method='lm', formula= y~x) -> plt)
+
+
+
+# R/S/I clustergram -------------------------------------------------------
+
+# import R/S/I data 
+setwd(path_data_file)
+
+RS_output <- read.csv("outcomes_GR24_RSgroups_filtered.csv")
+
+save(list="out_thresholds",file='iter_threshold_GR24_RvsI.Rdata')
+
+
+
 
 
 # RS groups enrichment ---------------------------------------------------------------
