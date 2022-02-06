@@ -1,0 +1,5 @@
+__pycache__/
+pheno-ml-ToxicityClassifier/
+venv/
+.idea/
+pheno-ml/
