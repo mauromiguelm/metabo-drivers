@@ -619,7 +619,7 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 write.csv(basal_associations, 'basal_association.csv')
 
-# plot most interesting associations for each drug -----------------------
+# plot top ranked interesting associations -----------------------
 
 #select the ions that survived permutation thresohld
 
@@ -632,7 +632,7 @@ df$color <- ifelse(df$slope<0, "Negative", "Positive")
 tmp_ions <- ions[,c("ionIndex",'mzLabel','idKEGG','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
 
 df <- merge(df, tmp_ions, by='ionIndex')
-
+write.csv(df, file = 'metabolite_GR24_association_survivingCI_ionLabel.csv')
 #number of associations per metabolite with diferent drugs (plot)
 
 tmp <- df %>% group_by(ionIndex) %>% dplyr::summarise(count_metab = n())
@@ -643,7 +643,26 @@ ggplot(tmp, aes(x=count_metab, fill = factor(count_metab)))+
   theme_bw()+
   theme(legend.position = "none")
 
-#connections between edges igraph
+#sunkey plot, first col is drug, second is metab_pathway
+
+library(networkD3)
+
+
+links <- df[,c('drug','name')]
+
+colnames(links) <- c("source",'target')
+
+nodes <- data.frame(unique(as.character(unlist(links))))
+
+# Make the Network
+p <- sankeyNetwork(Links = links, Nodes = nodes,
+                   Source = "source", Target = 'target',
+                   sinksRight=FALSE)
+p
+
+
+#
+
 
 data_cyto <- df[,c('idKEGG','drug','slope')]
 
@@ -652,6 +671,29 @@ data_cyto <- tidyr::separate_rows(data_cyto,idKEGG, convert = TRUE, sep = ' ')
 data_cyto <- subset(data_cyto,!grepl("^\\s*$", idKEGG))
 
 data_cyto <- tidyr::pivot_wider(data_cyto,names_from = 'drug',values_from = 'slope')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #plot top 10 associations with circlize
 
@@ -743,7 +785,7 @@ circos.track(df$drug, y =df$slope.x,
 dev.off()
 circos.clear()
 
-# plot one interesting case ---------------------------------------------
+# plot one interesting association ---------------------------------------------
 #doi = drug of interest
 #iot = ion of interest
 
@@ -932,6 +974,26 @@ lapply(unique(RS_output$Drug), function(drug_idx){
   
   
 })
+
+
+# export log2fc data for cytoscape ----------------------------------------
+
+tmp <- metab_fcs
+
+tmp <- subset(tmp, drug == 'Methotrexate' & cell_line == "SW620" & conc == 5, select = c('ionIndex', "log2fc",'pvalue'))
+
+ions_sub <- ions[,c('ionIndex','idKEGG')]
+
+ions_sub <- tidyr::separate_rows(ions_sub,idKEGG, convert = TRUE, sep = ' ')
+
+ions_sub <- subset(ions_sub,!grepl("^\\s*$", idKEGG))
+
+ions_sub <- ions_sub %>% dplyr::group_by(idKEGG) %>% dplyr::slice(1)
+
+tmp <- merge(tmp, ions_sub,by='ionIndex')
+
+write.csv(file = 'example_for_metabscape.csv', x = tmp[,c('idKEGG', 'log2fc','pvalue')])
+
 
 
 
