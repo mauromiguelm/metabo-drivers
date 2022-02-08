@@ -643,56 +643,118 @@ ggplot(tmp, aes(x=count_metab, fill = factor(count_metab)))+
   theme_bw()+
   theme(legend.position = "none")
 
-#sunkey plot, first col is drug, second is metab_pathway
+
+# #sunkey plot of positive associations -----------------------------------
+
+#first col is drug, second is metab_pathway or any other meta for metabolites
+
+library(networkD3)
+library(dplyr)
+library(tidyr)
+
+#prep data for individual drug metab assoation
+
+df_sankey <- df[,c('drug','name')]
+
+names(df_sankey) <- c("name", 'year1')
+
+#create links and nodes
+
+links <-
+  df_sankey %>%mutate(row = row_number()) %>%  # add a row id
+  pivot_longer(-row, names_to = "column", values_to = "source") %>%  # gather all columns
+  mutate(column = match(column, names(df))) %>%  # convert col names to col ids
+  group_by(row) %>%
+  mutate(target = lead(source, order_by = column)) %>%  # get target from following node in row
+  ungroup() %>% 
+  filter(!is.na(target))  # remove links from last column in original data
+
+nodes <- data.frame(name = unique(c(links$source, links$target)))
+nodes$label <- sub('_[0-9]*$', '', nodes$name) # remove column id from node label
+
+links$source_id <- match(links$source, nodes$name) - 1
+links$target_id <- match(links$target, nodes$name) - 1
+links$value <- 1
 
 library(networkD3)
 
+#plot 
 
-links <- df[,c('drug','name')]
-
-colnames(links) <- c("source",'target')
-
-nodes <- data.frame(unique(as.character(unlist(links))))
-
-# Make the Network
-p <- sankeyNetwork(Links = links, Nodes = nodes,
-                   Source = "source", Target = 'target',
-                   sinksRight=FALSE)
-p
+sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
+              Target = 'target_id', Value = 'value', NodeID = 'label')
 
 
-#
+#prep data for individual drug to pathway association
 
+#expand kegg id
 
-data_cyto <- df[,c('idKEGG','drug','slope')]
+df_sankey <- df[df$drug=='Methotrexate',c('drug','idKEGG')]
 
-data_cyto <- tidyr::separate_rows(data_cyto,idKEGG, convert = TRUE, sep = ' ')
+df_sankey <- tidyr::separate_rows(df_sankey,idKEGG, convert = TRUE, sep = ' ')
 
-data_cyto <- subset(data_cyto,!grepl("^\\s*$", idKEGG))
+df_sankey <- subset(df_sankey,!grepl("^\\s*$", idKEGG))
 
-data_cyto <- tidyr::pivot_wider(data_cyto,names_from = 'drug',values_from = 'slope')
+# relate kegg compound ID to pathway
 
+map_pathway_to_cpds <- data.frame(do.call(rbind,strsplit(temp, "\t")))
 
+map_pathway_to_cpds$X1 <- gsub("path:","",map_pathway_to_cpds$X1)
 
+hsa_metab_pathways <- data.frame(path_names = keggGet('path:hsa01100')[[1]][['REL_PATHWAY']])
 
+which_pathways <- sapply(map_pathway_to_cpds, "%in%",rownames(hsa_metab_pathways))
 
+map_pathway_to_cpds <- map_pathway_to_cpds[which_pathways,]
 
+path_names <- lapply(df_sankey$idKEGG,function(idx){
+  #idx =  "C00112"
+  which_path <- apply(map_pathway_to_cpds,1,"%in%",idx)
+  
+  which_path <- apply(which_path, 1, any)
+  
+  if(sum(which_path)>0){
+    
+    
+    path_names <- hsa_metab_pathways[rownames(hsa_metab_pathways)%in%map_pathway_to_cpds[which_path,1],]
+    return(paste(path_names, collapse = "_"))
+    }
+  })
 
+df_sankey$path_names <- path_names
 
+df_sankey <- tidyr::separate_rows(df_sankey,path_names, convert = TRUE, sep = '_')
 
+df_sankey <- df_sankey[,c('drug','path_names')]
 
+names(df_sankey) <- c("name", 'year1')
 
+library(tidyr)
 
+library(dplyr)
+#create links and nodes
 
+links <-
+  df_sankey %>%mutate(row = row_number()) %>%  # add a row id
+  pivot_longer(-row, names_to = "column", values_to = "source") %>%  # gather all columns
+  mutate(column = match(column, names(df))) %>%  # convert col names to col ids
+  group_by(row) %>%
+  mutate(target = lead(source, order_by = column)) %>%  # get target from following node in row
+  ungroup() %>% 
+  filter(!is.na(target))  # remove links from last column in original data
 
+nodes <- data.frame(name = unique(c(links$source, links$target)))
+nodes$label <- sub('_[0-9]*$', '', nodes$name) # remove column id from node label
 
+links$source_id <- match(links$source, nodes$name) - 1
+links$target_id <- match(links$target, nodes$name) - 1
+links$value <- 1
 
+library(networkD3)
 
+#plot 
 
-
-
-
-
+sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
+              Target = 'target_id', Value = 'value', NodeID = 'label')
 
 
 #plot top 10 associations with circlize
@@ -1118,7 +1180,6 @@ lapply(unique(RS_groups$Drug), function(drug_idx){
 #files <- list.files(pattern = "SUMMARY.RESULTS.REPORT")
 
 #results <- lapply(files, read.delim)
-
 
 results <- Output_GSEA
 
