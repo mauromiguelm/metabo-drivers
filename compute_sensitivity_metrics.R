@@ -3,8 +3,10 @@
 # load packages nad definitions -------------------------------------------
 
 path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
-path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
-path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\growth_metrics'
+#path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
+path_data_file = "C:\\Users\\mauro\\Documents\\phd_results"
+#path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\growth_metrics'
+path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
 load("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data\\growth_curves_filtered.RData")
 
 library(dplyr); library(tidyr); library(ggplot2);library(gplots);library(RColorBrewer)
@@ -463,7 +465,7 @@ rows_to_exclude <- !paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% pa
 filtered_data <- filtered_data[rows_to_exclude,]
 
 library(parallel)
-numWorkers <- 7
+numWorkers <- detectCores()-1
 
 setwd(path_data_file)
 cl <-makeCluster(numWorkers, type="PSOCK",outfile = "tmp_err.txt")
@@ -498,8 +500,8 @@ metab_fcs <- do.call(rbind, metab_fcs)
 iterate_over_thresholds <-  function(drug_idx,gr24_data,data_metab,get_random_threshold_){
   #drug_idx = '17-AAG'
   sub_data <- subset(gr24_data, Drug == drug_idx)
-  min_value <- min(sub_data$percent_change_GR)
-  max_value <- max(sub_data$percent_change_GR)
+  min_value <- 20 #min(sub_data$percent_change_GR)
+  max_value <- 90 #max(sub_data$percent_change_GR)
   thresholds <- get_random_threshold_(min=min_value,max=max_value,n_=1000)
   sub_metab_data <- data_metab[data_metab$drug==drug_idx,]
   sub_metab_data$cell_conc <- paste(sub_metab_data$cell_line,sub_metab_data$conc)
@@ -512,6 +514,8 @@ iterate_over_thresholds <-  function(drug_idx,gr24_data,data_metab,get_random_th
     sub_data$group <- ifelse(sub_data$percent_change_GR <=thresholds[[idx]][1],'S',sub_data$group)
     sub_data$group <- ifelse(sub_data$percent_change_GR >=thresholds[[idx]][2],'R',sub_data$group)
     sub_data$group <- ifelse(is.na(sub_data$group),'I',sub_data$group)
+    sub_data$group <- ifelse(sub_data$percent_change_GR <=20,NA,sub_data$group)
+    sub_data$group <- ifelse(sub_data$percent_change_GR >=90,NA,sub_data$group)
     sub_data$cell_conc <- paste(sub_data$cell,sub_data$Final_conc_uM)
     #calculate stats between R/S groups
     data_s <- subset(sub_data, group=='I')
@@ -529,7 +533,7 @@ iterate_over_thresholds <-  function(drug_idx,gr24_data,data_metab,get_random_th
                           t1=thresholds[[idx]][1],
                           t2=thresholds[[idx]][2],
                           log2fc=log2fc,
-                          pval=pval)) 
+                          pval=pval))
       }
     }) ->results 
     
@@ -576,7 +580,7 @@ lapply(seq_along(out_thresholds),function(idx){
     geom_point(data=sub_out[which(sub_out$count_fc == max(sub_out$count_fc)), ], colour="red", size=3)+
     scale_colour_viridis()->plt
   
-  ggsave(paste0("ithreshold_drug=",drug,'_log2fc_pval_filter_RvsI.png'),plt)
+  ggsave(paste0("ithreshold_drug=",drug,'_log2fc_pval_filter_RvsI_min20max80.png'),plt)
   
 })
 
@@ -622,9 +626,9 @@ counted_groups <- do.call(rbind,counted_groups)
 # save results
 setwd(path_data_file)
 
-write.csv(file = 'counted_groups_ithreshold_GR24_RvsI.csv',x = counted_groups)
+write.csv(file = 'counted_groups_ithreshold_GR24_RvsI_between20-90.csv',x = counted_groups)
 
-save(list="out_thresholds",file='iter_threshold_GR24_RvsI.Rdata')
+save(list="out_thresholds",file='iter_threshold_GR24_RvsI_between20-90.Rdata')
 
 #save filtered RS groups
 
