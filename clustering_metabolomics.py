@@ -1,32 +1,20 @@
-print('script to analyze HD metabolomics data paired with drug sensitivity')
-#script for high-dimentional analysis of metabolomics data
-print('script to analyze HD metabolomics data paired with drug sensitivity')
-
-
-#import packages
 import os
 import umap
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
-path_out = "C:\\Users\\mauro\\Documents\\phd_results"
-path_data = "C:\\Users\\mauro\\polybox\\data_metab"
+def import_and_transform_data(file):
+    data = pd.read_csv(file)
+    ## TODO: transform log2fc into a wide matrix
 
-#import data
-
-pd.read_csv()
-
-#fit umap
-
-for drug in drugs:
+def collect_UMAP_embeddings(data):
     reducer = umap.UMAP()
-    drug_metab_data = data.values
+    data = data.values
     reducer.fit_transform(drug_metab_data)
     embedding.shape
 
-    #plot results
-
+def plotting_embeddings():
     plt.scatter(
     embedding[:, 0],
     embedding[:, 1],
@@ -37,3 +25,10 @@ for drug in drugs:
     #plot results colored by drug sensitivity
 
     # HDBSCAN clustering on reduced space
+
+def main():
+    pass
+
+if __name__ = "__main__":
+    path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
+    path_data = "C:\\Users\\mauro\\polybox\\data_metab"
