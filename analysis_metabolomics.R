@@ -2,7 +2,8 @@
 
 # load packages and definitions -------------------------------------------
 
-path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
+#path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
+path_data_file = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
 path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\metabolomics'
 path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
@@ -135,6 +136,65 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
   }else{
     NA
   }
+})
+
+
+# export log2fc data for clustering -------------------------------------
+
+#map concentrations 
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
+``
+metab_fcs <- do.call(rbind,metab_fcs)
+
+metab_fcs$X <- NULL
+names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+
+lapply(unique(metab_fcs$drug), function(drug_idx){
+  tmp <- subset(metab_fcs, drug == drug_idx)
+  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
+  return(tmp)
+}) -> metab_fcs
+
+metab_fcs <- do.call(rbind, metab_fcs)
+
+#remove concs wih no drug effect or too strong drug effect
+
+metab_fcs$cell_drug_conc <- paste(metab_fcs$cell_line,metab_fcs$drug,metab_fcs$conc)
+
+setwd(path_data_file)
+setwd("..")
+groups_to_keep <-read.csv('outcomes_GR24.csv')
+# 
+# groups_to_keep <- subset(RS_groups, !is.na(percent_change_GR))
+# 
+groups_to_keep$cell_drug_conc <- paste(groups_to_keep$cell,groups_to_keep$Drug,groups_to_keep$Final_conc_uM)
+
+#metab_fcs <- subset(metab_fcs, cell_drug_conc %in% unique(groups_to_keep$cell_drug_conc))
+
+#return a matrix of data (rows are samples, cols are ion features) and metadata (sample, growth inhibition)
+
+setwd(path_data_file)
+
+lapply(unique(metab_fcs$drug), function(drug_idx){
+  #drug_idx = "BPTES"
+  print(drug_idx)
+  tmp <- subset(metab_fcs, drug == drug_idx)
+  
+  tmp$pvalue <- NULL
+  
+  tmp <- tidyr::spread(tmp, key = ionIndex,value = log2fc)
+  
+  metadata <- tmp[,1:6]
+  
+  data <- tmp[,7:ncol(tmp)]
+  
+  metadata <- merge(metadata, groups_to_keep[,c('cell_drug_conc','percent_change_GR')], by ='cell_drug_conc')
+  
+  write.csv(metadata, paste("metadata",drug_idx,"log2fc.csv",sep ="_"))
+  write.csv(data, paste("data",drug_idx,"log2fc.csv",sep ="_"))
 })
 
 
@@ -688,7 +748,7 @@ sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
 
 #expand kegg id
 
-df_sankey <- df[df$drug=='Methotrexate',c('drug','idKEGG')]
+df_sankey <- df[df$drug=='Pemetrexed',c('drug','idKEGG')]
 
 df_sankey <- tidyr::separate_rows(df_sankey,idKEGG, convert = TRUE, sep = ' ')
 
@@ -729,7 +789,6 @@ df_sankey <- df_sankey[,c('drug','path_names')]
 names(df_sankey) <- c("name", 'year1')
 
 library(tidyr)
-
 library(dplyr)
 #create links and nodes
 
