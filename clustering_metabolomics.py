@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from itertools import compress
+import matplotlib.pyplot as plt
 
 def import_and_transform_data(file):
     data = pd.read_csv(file,index_col=0)
@@ -15,19 +16,36 @@ def collect_UMAP_embeddings(data, out_path):
     return(embedding)
 
 
-def plot_embeddings(embedding, drug, path):
-    #plot embeddings
-    plt.scatter(
-    embedding[:, 0],
-    embedding[:, 1])
-    #c=[sns.color_palette()[x] for x in data.conc)
-    plt.gca().set_aspect('equal', 'datalim')
-    plt.title('UMAP projection of: '+drug , fontsize=24)
-    plt.savefig(path+"_"+drug+".png")
+def plot_embeddings(embedding, meta, drug):
 
     #plot embeddings colored by drug sensitivity
+    fig = sns.relplot(x=embedding[:, 0],
+                      y=embedding[:, 1],
+                      hue=meta.percent_change_GR,
+                      palette = sns.color_palette("rocket", as_cmap=True))
+    fig.set(xlabel=None, ylabel = None)
+    fig.set(title = 'UMAP projection of: '+drug + ' col=GR24')
+    fig.tight_layout()
+    fig.savefig(drug + "_full_col=GR24.png")
+
     #plot embeddings colored by cell
+    fig = sns.relplot(x=embedding[:, 0],
+                      y=embedding[:, 1],
+                      hue=meta.cell_line)
+    fig.set(xlabel=None, ylabel = None)
+    fig.set(title = 'UMAP projection of: '+drug+' col=cell')
+    fig.tight_layout()
+    fig.savefig(drug + "_full_col=cell.png")
+
     # plot embeddings colored by concentration
+    fig = sns.relplot(x=embedding[:, 0],
+                      y=embedding[:, 1],
+                      hue=meta.conc,
+                      palette = sns.color_palette("viridis", as_cmap=True))
+    fig.set(xlabel=None, ylabel = None)
+    fig.set(title = 'UMAP projection of: '+drug + ' col=conc')
+    fig.tight_layout()
+    fig.savefig(drug + "_full_col=conc.png")
 
 def parameter_selection_HDBSCAN(data,nclus):
     #param optimization HDBSCAN
@@ -38,7 +56,7 @@ def main():
 
 if __name__ = "__main__":
     path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
-    path_data = "C:\\Users\\mauro\\polybox\\data_metab\\log2fc"
+    path_data = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
 
     files = os.listdir(path_data)
 
@@ -49,12 +67,15 @@ if __name__ = "__main__":
 
     for drug in drugs:
         print(drug)
-        drug = 'Methotrexate'
+        #drug = 'Cladribine'
         data = import_and_transform_data(path_data+"\\data_"+drug+'_log2fc.csv')
+        metadata = import_and_transform_data(path_data+"\\metadata_"+drug+'_log2fc.csv')
 
         embeddings = collect_UMAP_embeddings(data,"test")
 
-        plot_embeddings(embeddings, drug, path = path_fig)
+        os.chdir(path_fig)
+
+        plot_embeddings(embedding=embeddings, drug=drug, meta = metadata)
 
 
 
