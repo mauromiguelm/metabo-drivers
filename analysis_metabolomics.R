@@ -4,7 +4,8 @@
 
 #path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
 path_data_file = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
-path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\metabolomics'
+path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
+#path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\metabolomics'
 path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
 source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\plate_converter.R")
@@ -179,7 +180,7 @@ groups_to_keep$cell_drug_conc <- paste(groups_to_keep$cell,groups_to_keep$Drug,g
 setwd(path_data_file)
 
 lapply(unique(metab_fcs$drug), function(drug_idx){
-  #drug_idx = "BPTES"
+  #drug_idx = "Methotrexate"
   print(drug_idx)
   tmp <- subset(metab_fcs, drug == drug_idx)
   
@@ -191,7 +192,7 @@ lapply(unique(metab_fcs$drug), function(drug_idx){
   
   data <- tmp[,7:ncol(tmp)]
   
-  metadata <- merge(metadata, groups_to_keep[,c('cell_drug_conc','percent_change_GR')], by ='cell_drug_conc')
+  metadata <- merge(metadata, groups_to_keep[,c('cell_drug_conc','percent_change_GR')], by ='cell_drug_conc',all.x = T)
   
   write.csv(metadata, paste("metadata",drug_idx,"log2fc.csv",sep ="_"))
   write.csv(data, paste("data",drug_idx,"log2fc.csv",sep ="_"))
@@ -704,7 +705,7 @@ ggplot(tmp, aes(x=count_metab, fill = factor(count_metab)))+
   theme(legend.position = "none")
 
 
-# #sunkey plot of positive associations -----------------------------------
+# #sankey plot of positive associations -----------------------------------
 
 #first col is drug, second is metab_pathway or any other meta for metabolites
 
@@ -714,14 +715,18 @@ library(tidyr)
 
 #prep data for individual drug metab assoation
 
-df_sankey <- df[,c('drug','name')]
+df_sankey <- df[,c('drug','name','slope')]
 
-names(df_sankey) <- c("name", 'year1')
+names(df_sankey) <- c("name", 'year1','value')
+
+df_sankey$groups <- paste(df_sankey$name, df_sankey$year1)
+
+df_sankey <- df_sankey[!df_sankey$year1 %in% df_sankey$name,] #remove metabolites with drug names
 
 #create links and nodes
 
 links <-
-  df_sankey %>%mutate(row = row_number()) %>%  # add a row id
+  df_sankey[,c(1,2)] %>%mutate(row = row_number()) %>%  # add a row id
   pivot_longer(-row, names_to = "column", values_to = "source") %>%  # gather all columns
   mutate(column = match(column, names(df))) %>%  # convert col names to col ids
   group_by(row) %>%
@@ -729,19 +734,22 @@ links <-
   ungroup() %>% 
   filter(!is.na(target))  # remove links from last column in original data
 
+links$groups <- paste(links$source, links$target)
+
+links <- merge(links, df_sankey[,c('groups',"value")],by="groups")
+
 nodes <- data.frame(name = unique(c(links$source, links$target)))
 nodes$label <- sub('_[0-9]*$', '', nodes$name) # remove column id from node label
 
 links$source_id <- match(links$source, nodes$name) - 1
 links$target_id <- match(links$target, nodes$name) - 1
-links$value <- 1
-
-library(networkD3)
+#links$value <- abs(links$value)
 
 #plot 
 
 sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
-              Target = 'target_id', Value = 'value', NodeID = 'label')
+              Target = 'target_id', Value = 'value', NodeID = 'label',height = 4000,width = 1000)
+
 
 
 #prep data for individual drug to pathway association
