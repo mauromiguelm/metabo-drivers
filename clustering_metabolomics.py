@@ -26,7 +26,7 @@ def generate_clusters(data,
                       min_cluster_size):
 
     clusters = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size,
-                               ).fit(data.values)
+                               ).fit(data)
     return(clusters)
 
 def score_clusters(clusters,prob_threshold = 0.05):
@@ -53,13 +53,16 @@ def objective(params,metadata, data, penalty):
     clusters = generate_clusters(data=embeddings,
                                  min_cluster_size=params['min_cluster_size'])
 
-    label_count, cost = score_clusters(clusters, prob_threshold=0.05)
+    label_count, cost = score_clusters(clusters = clusters, prob_threshold=params['prob_threshold'])
 
-    # penalty on the cost function if no concentration effect
-    samples = [condition[1] for condition in name_group[1].groupby('condition')['value']]
-    f_val, p_val = f_oneway(*samples)
+    # penalty on the cost function if absense of concentration effect
+    samples = [value[1].dropna() for value in metadata.groupby(clusters.labels_)['percent_change_GR']]
 
-    if(p_val<0.05):
+    samples = [x  for x in samples if len(x) > 0]
+
+    f_val, p_val = stats.f_oneway(*samples)
+
+    if(p_val>0.05):
         penalty = penalty
     else:
         penalty = 0
@@ -132,6 +135,7 @@ if __name__ = "__main__":
     space = {'n_neighbors':range(2,20),
              'n_components':range(2,5),
              'min_cluster_size':range(4,20),
+             "prob_threshold":0.1,
              'penalty':0.15,
              'n_evals':10,
              'random_state':13
@@ -140,9 +144,10 @@ if __name__ = "__main__":
     params= {'n_neighbors': 3,
              'n_components': 2,
              'min_cluster_size': 5,
-             'penalty': 0.15,
-             'n_evals': 10,
-             'random_state': 13
+             "prob_threshold":0.1,
+             'penalty':0.15,
+             'n_evals':10,
+             'random_state':13
              }
 
 
