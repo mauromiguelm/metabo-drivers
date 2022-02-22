@@ -148,10 +148,13 @@ if __name__ = "__main__":
     results = {}
 
     for drug in drugs:
+        """
+        define best params for UMAP+HDBSCAN
+        """
         print(drug)
         #drug = 'Methotrexate'
-        data = import_and_transform_data(path_data+"\\data_"+drug+'_log2fc.csv')
-        metadata = import_and_transform_data(path_data+"\\metadata_"+drug+'_log2fc.csv')
+        data = import_and_transform_data(path_data+"\\log2fc_full"+"\\data_"+drug+'_log2fc.csv')
+        metadata = import_and_transform_data(path_data+"\\log2fc_full"+"\\metadata_"+drug+'_log2fc.csv')
 
         a,b = bayesian_search(data,space = hspace,n_evals=hspace['n_evals'])
 
@@ -159,8 +162,34 @@ if __name__ = "__main__":
 
         os.chdir(path_data)
 
-        with open('opt_clustering.pkl', 'wb') as f:
-            pickle.dump(results, f)
+    with open('opt_clustering.pkl', 'wb') as f:
+        pickle.dump(results, f)
+
+    for drug in drugs:
+        """
+        get best UMAP+HDBSCAN results
+        """
+        #drug = 'Methotrexate'
+
+        data = import_and_transform_data(path_data+"\\log2fc_full" + "\\data_" + drug + '_log2fc.csv')
+        metadata = import_and_transform_data(path_data+"\\log2fc_full" + "\\metadata_" + drug + '_log2fc.csv')
+
+        params = results[drug][0]
+
+        embeddings = collect_UMAP_embeddings(data,
+                                             n_neighbors=params['n_neighbors'],
+                                             n_components=params['n_components'],
+                                             random_state=params['random_state'])
+
+        clusters = generate_clusters(data=embeddings,
+                                     min_cluster_size=params['min_cluster_size'])
+
+
+
+
+
+
+
 
 
 
