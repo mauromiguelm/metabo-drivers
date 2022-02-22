@@ -172,6 +172,20 @@ if __name__ = "__main__":
 
         os.chdir(path_data)
 
+    summary_best_params = [results[x][0] for x in results.keys()]
+
+    summary_best_params = pd.DataFrame(summary_best_params)
+
+    summary_best_params['drug'] = results.keys()
+
+    n_clus = [results[x][1].best_trial['result']['label_count'] for x in results.keys()]
+
+    summary_best_params['n_clus']= n_clus
+
+    os.chdir(path_data)
+
+    summary_best_params.to_csv("summary_clustering.csv")
+
     with open('opt_clustering.pkl', 'wb') as f:
         pickle.dump(results, f)
 
@@ -191,6 +205,8 @@ if __name__ = "__main__":
                                              n_components=params['n_components'],
                                              random_state=params['random_state'])
 
+
+
         clusters = generate_clusters(data=embeddings,
                                      min_cluster_size=params['min_cluster_size'])
 
@@ -206,6 +222,8 @@ if __name__ = "__main__":
         plot_embeddings(embedding=embeddings,
                         meta=metadata,
                         drug = drug)
+
+
 
 
 
