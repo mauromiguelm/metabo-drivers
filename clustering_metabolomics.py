@@ -1,4 +1,4 @@
-import os, umap, hdbscan
+import os, umap, hdbscan, hyperopt, pickle
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -39,12 +39,11 @@ def score_clusters(clusters,prob_threshold = 0.05):
     return(label_count, cost)
 
 
-def objective(params,metadata, data, penalty):
+def objective(params,metadata, data):
     """
     Objective function for hyperopt to minimize, which incorporates constraints
     on the number of clusters we want to identify
     """
-
     embeddings = collect_UMAP_embeddings(data,
                                          n_neighbors=params['n_neighbors'],
                                          n_components=params['n_components'],
@@ -60,36 +59,39 @@ def objective(params,metadata, data, penalty):
 
     samples = [x  for x in samples if len(x) > 0]
 
-    f_val, p_val = stats.f_oneway(*samples)
+    if len(samples)>1:
+        f_val, p_val = stats.f_oneway(*samples)
+    else:
+        p_val=1
 
-    if(p_val>0.05):
-        penalty = penalty
+    if p_val>0.05:
+        penalty = params['penalty']
     else:
         penalty = 0
 
     loss = cost + penalty
 
-    return {'loss': loss, 'label_count': label_count, 'status': STATUS_OK}
+    return({'loss': loss, 'label_count': label_count, 'status':  hyperopt.STATUS_OK})
 
-def bayesian_search(data, space, num_evals):
+def bayesian_search(data, space, n_evals):
     """
         Perform bayseian search on hyperopt hyperparameter space to minimize objective function
     """
 
-    trials = Trials()
-    fmin_objective = partial(objective, data=data, penalty)
-    best = fmin(fmin_objective,
+    trials = hyperopt.Trials()
+    fmin_objective = hyperopt.partial(objective, data=data, metadata = metadata)
+    best = hyperopt.fmin(fmin_objective,
                 space=space,
-                algo=tpe.suggest,
-                max_evals=num_evals,
+                algo= hyperopt.tpe.suggest,
+                max_evals=n_evals,
                 trials=trials)
 
-    best_params = space_eval(space, best)
+    best_params = hyperopt.space_eval(space, best)
     print('best:')
     print(best_params)
     print(f"label count: {trials.best_trial['result']['label_count']}")
 
-    return best_params, trials
+    return(best_params, trials)
 
 def plot_embeddings(embedding, meta, drug):
 
@@ -127,31 +129,23 @@ def main():
 
 if __name__ = "__main__":
     path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
-    path_data = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
+    path_data = "C:\\Users\\mauro\\Documents\\phd_results"
 
-    files = os.listdir(path_data)
+    files = os.listdir(path_data+"\\log2fc_full")
     files = list(compress(files, ["metadata" in x for x in files]))
 
-    space = {'n_neighbors':range(2,20),
-             'n_components':range(2,5),
-             'min_cluster_size':range(4,20),
+    hspace = {'n_neighbors':hyperopt.hp.choice('n_neighbors',range(2,20)),
+             'n_components':hyperopt.hp.choice('n_components',range(2,5)),
+             'min_cluster_size':hyperopt.hp.choice('min_cluster_size',range(4,20)),
              "prob_threshold":0.1,
              'penalty':0.15,
-             'n_evals':10,
+             'n_evals':250,
              'random_state':13
-             }
-
-    params= {'n_neighbors': 3,
-             'n_components': 2,
-             'min_cluster_size': 5,
-             "prob_threshold":0.1,
-             'penalty':0.15,
-             'n_evals':10,
-             'random_state':13
-             }
-
+              }
 
     drugs = set([x.split("_")[1] for x in files])
+
+    results = {}
 
     for drug in drugs:
         print(drug)
@@ -159,11 +153,16 @@ if __name__ = "__main__":
         data = import_and_transform_data(path_data+"\\data_"+drug+'_log2fc.csv')
         metadata = import_and_transform_data(path_data+"\\metadata_"+drug+'_log2fc.csv')
 
-        bayesian_search()
+        a,b = bayesian_search(data,space = hspace,n_evals=hspace['n_evals'])
 
-        os.chdir(path_fig)
+        results[drug] = [a,b]
 
-        plot_embeddings(embedding=embeddings, drug=drug, meta = metadata)
+        os.chdir(path_data)
+
+        with open('opt_clustering.pkl', 'wb') as f:
+            pickle.dump(results, f)
+
+
 
 
 
