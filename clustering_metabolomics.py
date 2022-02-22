@@ -124,6 +124,16 @@ def plot_embeddings(embedding, meta, drug):
     fig.tight_layout()
     fig.savefig(drug + "_full_col=conc.png")
 
+    # plot embeddings colored by clusters
+    fig = sns.relplot(x=embedding[:, 0],
+                      y=embedding[:, 1],
+                      hue=meta.clusters,
+                      palette="Set1")
+    fig.set(xlabel=None, ylabel=None)
+    fig.set(title='UMAP projection of: ' + drug + ' col=cluster')
+    fig.tight_layout()
+    fig.savefig(drug + "_full_col=clusters.png")
+
 def main():
     pass
 
@@ -183,6 +193,25 @@ if __name__ = "__main__":
 
         clusters = generate_clusters(data=embeddings,
                                      min_cluster_size=params['min_cluster_size'])
+
+        metadata['clusters'] = clusters.labels_
+
+        embeddings = collect_UMAP_embeddings(data,
+                                             n_neighbors=params['n_neighbors'],
+                                             n_components=2,
+                                             random_state=params['random_state'])
+
+        os.chdir(path_fig+"\\clustering_figures")
+
+        plot_embeddings(embedding=embeddings,
+                        meta=metadata,
+                        drug = drug)
+
+
+
+
+
+
 
 
 
