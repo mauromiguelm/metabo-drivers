@@ -144,6 +144,8 @@ if __name__ = "__main__":
     files = os.listdir(path_data+"\\log2fc_full")
     files = list(compress(files, ["metadata" in x for x in files]))
 
+    #Drug-by-drug clustering
+
     hspace = {'n_neighbors':hyperopt.hp.choice('n_neighbors',range(2,20)),
              'n_components':hyperopt.hp.choice('n_components',range(2,5)),
              'min_cluster_size':hyperopt.hp.choice('min_cluster_size',range(4,20)),
@@ -222,6 +224,93 @@ if __name__ = "__main__":
         plot_embeddings(embedding=embeddings,
                         meta=metadata,
                         drug = drug)
+
+
+    # full data clustering
+
+    hspace = {'n_neighbors': hyperopt.hp.choice('n_neighbors', range(2, 1000)),
+              'n_components': hyperopt.hp.choice('n_components', range(2, 20)),
+              'min_cluster_size': hyperopt.hp.choice('min_cluster_size', range(4, 1000)),
+              "prob_threshold": 0.1,
+              'penalty': 0.15,
+              'n_evals': 2,
+              'random_state': 13
+              }
+
+    drugs = set([x.split("_")[1] for x in files])
+
+    results = {}
+
+    data = []
+    metadata = []
+
+    for drug in drugs:
+        """
+        define best params for UMAP+HDBSCAN
+        """
+        print(drug)
+        # drug = 'Methotrexate'
+        data.append(import_and_transform_data(path_data + "\\log2fc_full" + "\\data_" + drug + '_log2fc.csv'))
+        metadata.append(import_and_transform_data(path_data + "\\log2fc_full" + "\\metadata_" + drug + '_log2fc.csv'))
+
+    data = pd.concat(data)
+    metadata = pd.concat(metadata)
+
+    a, b = bayesian_search(data, space=hspace, n_evals=hspace['n_evals'])
+
+    results[drug] = [a, b]
+
+    os.chdir(path_data)
+
+    summary_best_params = [results[x][0] for x in results.keys()]
+
+    summary_best_params = pd.DataFrame(summary_best_params)
+
+    summary_best_params['drug'] = results.keys()
+
+    n_clus = [results[x][1].best_trial['result']['label_count'] for x in results.keys()]
+
+    summary_best_params['n_clus'] = n_clus
+
+    os.chdir(path_data)
+
+    summary_best_params.to_csv("summary_clustering.csv")
+
+    with open('opt_clustering.pkl', 'wb') as f:
+        pickle.dump(results, f)
+
+    for drug in drugs:
+        """
+        get best UMAP+HDBSCAN results
+        """
+        # drug = 'Methotrexate'
+
+        data = import_and_transform_data(path_data + "\\log2fc_full" + "\\data_" + drug + '_log2fc.csv')
+        metadata = import_and_transform_data(path_data + "\\log2fc_full" + "\\metadata_" + drug + '_log2fc.csv')
+
+        params = results[drug][0]
+
+        embeddings = collect_UMAP_embeddings(data,
+                                             n_neighbors=params['n_neighbors'],
+                                             n_components=params['n_components'],
+                                             random_state=params['random_state'])
+
+        clusters = generate_clusters(data=embeddings,
+                                     min_cluster_size=params['min_cluster_size'])
+
+        metadata['clusters'] = clusters.labels_
+
+        embeddings = collect_UMAP_embeddings(data,
+                                             n_neighbors=params['n_neighbors'],
+                                             n_components=2,
+                                             random_state=params['random_state'])
+
+        os.chdir(path_fig + "\\clustering_figures")
+
+        plot_embeddings(embedding=embeddings,
+                        meta=metadata,
+                        drug=drug)
+
 
 
 
