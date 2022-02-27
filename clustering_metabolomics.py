@@ -228,12 +228,12 @@ if __name__ = "__main__":
 
     # full data clustering
 
-    hspace = {'n_neighbors': hyperopt.hp.choice('n_neighbors', range(2, 1000)),
+    hspace = {'n_neighbors': hyperopt.hp.choice('n_neighbors', range(2, 40)),
               'n_components': hyperopt.hp.choice('n_components', range(2, 20)),
-              'min_cluster_size': hyperopt.hp.choice('min_cluster_size', range(4, 1000)),
+              'min_cluster_size': hyperopt.hp.choice('min_cluster_size', range(10, 1000)),
               "prob_threshold": 0.1,
               'penalty': 0.15,
-              'n_evals': 2,
+              'n_evals': 100,
               'random_state': 13
               }
 
