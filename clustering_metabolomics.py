@@ -114,6 +114,15 @@ def plot_embeddings(embedding, meta, drug):
     fig.tight_layout()
     fig.savefig(drug + "_full_col=cell.png")
 
+    # plot embeddings colored by drug
+    fig = sns.relplot(x=embedding[:, 0],
+                      y=embedding[:, 1],
+                      hue=meta.drug)
+    fig.set(xlabel=None, ylabel=None)
+    fig.set(title='UMAP projection of: ' + drug + ' col=drug')
+    fig.tight_layout()
+    fig.savefig(drug + "_full_col=drug.png")
+
     # plot embeddings colored by concentration
     fig = sns.relplot(x=embedding[:, 0],
                       y=embedding[:, 1],
@@ -144,7 +153,7 @@ if __name__ = "__main__":
     files = os.listdir(path_data+"\\log2fc_full")
     files = list(compress(files, ["metadata" in x for x in files]))
 
-    #Drug-by-drug clustering
+    #drug-by-drug clustering
 
     hspace = {'n_neighbors':hyperopt.hp.choice('n_neighbors',range(2,20)),
              'n_components':hyperopt.hp.choice('n_components',range(2,5)),
@@ -258,58 +267,49 @@ if __name__ = "__main__":
 
     a, b = bayesian_search(data, space=hspace, n_evals=hspace['n_evals'])
 
-    results[drug] = [a, b]
-
     os.chdir(path_data)
 
-    summary_best_params = [results[x][0] for x in results.keys()]
+    with open('opt_clustering_fullData.pkl', 'wb') as f:
+        pickle.dump([a,b], f)
 
+    summary_best_params = a.items()
+    summary_best_params = list(summary_best_params)
     summary_best_params = pd.DataFrame(summary_best_params)
-
-    summary_best_params['drug'] = results.keys()
 
     n_clus = [results[x][1].best_trial['result']['label_count'] for x in results.keys()]
 
-    summary_best_params['n_clus'] = n_clus
+    summary_best_params['n_clus'] = b.best_trial['result']['label_count']
 
     os.chdir(path_data)
 
-    summary_best_params.to_csv("summary_clustering.csv")
+    summary_best_params.to_csv("summary_clustering_fullData.csv")
 
-    with open('opt_clustering.pkl', 'wb') as f:
-        pickle.dump(results, f)
+    """
+    get best UMAP+HDBSCAN results
+    """
 
-    for drug in drugs:
-        """
-        get best UMAP+HDBSCAN results
-        """
-        # drug = 'Methotrexate'
+    params = a
 
-        data = import_and_transform_data(path_data + "\\log2fc_full" + "\\data_" + drug + '_log2fc.csv')
-        metadata = import_and_transform_data(path_data + "\\log2fc_full" + "\\metadata_" + drug + '_log2fc.csv')
+    embeddings = collect_UMAP_embeddings(data,
+                                         n_neighbors=params['n_neighbors'],
+                                         n_components=params['n_components'],
+                                         random_state=params['random_state'])
 
-        params = results[drug][0]
+    clusters = generate_clusters(data=embeddings,
+                                 min_cluster_size=params['min_cluster_size'])
 
-        embeddings = collect_UMAP_embeddings(data,
-                                             n_neighbors=params['n_neighbors'],
-                                             n_components=params['n_components'],
-                                             random_state=params['random_state'])
+    metadata['clusters'] = clusters.labels_
 
-        clusters = generate_clusters(data=embeddings,
-                                     min_cluster_size=params['min_cluster_size'])
+    embeddings = collect_UMAP_embeddings(data,
+                                         n_neighbors=params['n_neighbors'],
+                                         n_components=2,
+                                         random_state=params['random_state'])
 
-        metadata['clusters'] = clusters.labels_
+    os.chdir(path_fig + "\\clustering_figures")
 
-        embeddings = collect_UMAP_embeddings(data,
-                                             n_neighbors=params['n_neighbors'],
-                                             n_components=2,
-                                             random_state=params['random_state'])
-
-        os.chdir(path_fig + "\\clustering_figures")
-
-        plot_embeddings(embedding=embeddings,
-                        meta=metadata,
-                        drug=drug)
+    plot_embeddings(embedding=embeddings,
+                    meta=metadata,
+                    drug='all-drugs')
 
 
 
