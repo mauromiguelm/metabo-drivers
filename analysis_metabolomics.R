@@ -147,7 +147,7 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
-``
+
 metab_fcs <- do.call(rbind,metab_fcs)
 
 metab_fcs$X <- NULL
@@ -680,6 +680,196 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 write.csv(basal_associations, 'basal_association.csv')
 
+
+# Determining half effect concentration for relevant ions -----------------
+
+#import full GR24 data
+
+setwd(paste0(path_fig))
+
+outcomes_GR24 <- read.csv("outcomes_GR24.csv")
+
+#for each ion that is associated with growth, use all concentrations
+#to determine IC50
+
+drug_cell_IC50 = list()
+models_GR24 = list()
+
+scale_y = function(x){(x-min(x))/(max(x)-min(x))}
+
+for(drug in unique(df$drug))
+  
+  #drug = "Methotrexate"
+  #drug = "Decitabine"
+  
+  sub_drug = subset(outcomes_GR24, Drug == drug)
+  
+  #calculate IC50 for every cell line
+  sub_drug$norm_change_GR <- scale_y(sub_drug$percent_change_GR)
+  
+  for(cell in unique(sub_drug$cell)){
+    #only use drugs that have at least 40% reduction in GR to calculate 
+    #cell ='IGROV1'
+    sub_drug_cell <- sub_drug[sub_drug$cell == cell,]
+    if(any(sub_drug_cell$percent_change_GR <80)){
+      
+      #order to eliminate bias from LOQ, non-linear effects
+      sub_drug_cell <- sub_drug_cell[order(sub_drug_cell$Final_conc_uM),]
+      sub_drug_cell$norm_change_GR <- sort(sub_drug_cell$norm_change_GR,decreasing = T)
+      
+      #fit model
+      model = drc::drm(norm_change_GR~Final_conc_uM,data = sub_drug_cell, fct=drc::l4(),
+                       upperl = c(NA,NA, 1, NA),
+                       lowerl = c(NA,NA, 1E-10, NA))
+      
+      #get params, IC50
+      h <-  - model$coefficients[1]
+      E0 <- model$coefficients[2]
+      Einf <- model$coefficients[3]
+      EC50 <- model$coefficients[4]
+      IC50 <-  drc::ED(model, 50)
+      
+      drug_cell_IC50=append(drug_cell_IC50,list(data.frame(
+        drug,
+        cell,
+        h,
+        E0,
+        Einf,
+        EC50,
+        "IC50"=IC50[1],
+        stderr=IC50[2]
+        )))
+      
+      models_GR24 = append(models_GR24, list(model))
+      
+    }else{
+      drug_cell_IC50=append(drug_cell_IC50,list(data.frame(
+        drug,
+        cell,
+        h=NA,
+        E0=NA,
+        Einf=NA,
+        EC50=NA,
+        IC50=NA,
+        stderr=NA
+      )))
+    }
+  }
+  
+
+drug_cell_IC50 <- do.call(rbind, drug_cell_IC50)
+
+drug_cell_fc <- list()
+models_log2fc <- list()
+
+for(idx in dim(df)[1])
+  #idx = 492 hbp
+  #idx = 138 orotate
+  sub_df <- df[idx,] 
+  
+  sub_fcs <- subset(metab_fcs, drug == sub_df$drug & ionIndex==sub_df$ionIndex)
+  sub_fcs$norm_log2fc <- scale_y(sub_fcs$log2fc)
+  
+  for(cell in unique(sub_fcs$cell_line)){
+    #cell = 'A498'
+    sub_cell_fcs <- subset(sub_fcs, cell_line == cell)
+    #order to eliminate bias from LOQ, non-linear effects
+    sub_cell_fcs <- sub_cell_fcs[order(sub_cell_fcs$conc),]
+    sub_cell_fcs$norm_log2fc <- sort(sub_cell_fcs$norm_log2fc,decreasing = T)
+    
+    #fit model
+    model = drc::drm(norm_log2fc~conc,data = sub_cell_fcs, fct=drc::l4(),
+                     upperl = c(NA,NA, 1, NA),
+                     lowerl = c(NA,NA, 1E-10, NA))
+    
+    #get params, IC50
+    h <-  - model$coefficients[1]
+    E0 <- model$coefficients[2]
+    Einf <- model$coefficients[3]
+    EC50 <- model$coefficients[4]
+    IC50 <-  drc::ED(model, 50)
+    
+    drug_cell_fc=append(drug_cell_fc,list(data.frame(
+      drug,
+      cell,
+      h,
+      E0,
+      Einf,
+      EC50,
+      "IC50"=IC50[1],
+      stderr=IC50[2]
+    )))
+    
+    models_log2fc = append(models_log2fc, list(model))
+     
+  }
+  
+
+drug_cell_fc <- do.call(rbind, drug_cell_fc)
+
+
+#fill NA with high concentration
+
+drug_cell_IC50$IC50 <- ifelse(is.na(drug_cell_IC50$IC50), max(drug_cell_IC50$IC50, na.rm = T)*1.1, drug_cell_IC50$IC50)
+
+drug_cell_fc$IC50 <- as.numeric(drug_cell_fc$IC50)
+
+drug_cell_fc$IC50 <- ifelse(is.na(drug_cell_fc$IC50), max(drug_cell_fc$IC50, na.rm = T)*1.1, drug_cell_fc$IC50)
+
+colnames(drug_cell_fc)[2] <- "cell"
+
+#compare IC50 for log2fc and GR24
+
+data_merged <- merge(drug_cell_IC50[,c("cell","IC50")], drug_cell_fc[,c("cell","IC50")], by = "cell")
+
+colnames(data_merged) <- c('cell',"GR24", "log2fc")
+data_merged <- tidyr::pivot_longer(data_merged, -cell)
+
+library(ggplot2)
+
+ggplot(data_merged, aes(name, value, fill = name))+
+  geom_boxplot()+
+  # geom_point() is used to plot data points on boxplot
+  geom_jitter(aes(fill=name,group=cell),size=3,shape=21)+
+  ylab('IC50')
+  
+ggplot(data_merged %>% mutate(x = (name), y = jitter(value)), 
+       aes(x = x, y = y, col = name)) + 
+  geom_point()+ 
+  geom_line(aes(group=cell), col = "grey50")+
+  xlab('name')+
+  ylab('IC50')
+
+
+#plot fitting
+
+
+plot(0,0,xlim = c(0,5),ylim = c(0,1),type = "n",xlab='Dose',ylab='Effect')
+cols = rev(heat.colors(length(models)))
+dose=seq(0,5,0.1)
+for(x in 1:length(models_GR24)){
+  
+  model = models_GR24[[x]]
+  
+  if(class(model)=='drc'){
+    tmp <- predict(model, data.frame(dose=dose), 
+                   interval = "prediction") 
+    lines(dose, tmp[,1],col= 'blue')
+    
+  }
+  
+  model = models_log2fc[[x]]
+  
+  if(class(model)=='drc'){
+    tmp <- predict(model, data.frame(dose=dose), 
+                   interval = "prediction") 
+    lines(dose, tmp[,1],col= 'red')
+    
+  }
+}
+
+xlab('dasdsad')
+
 # plot top ranked interesting associations -----------------------
 
 #select the ions that survived permutation thresohld
@@ -751,12 +941,13 @@ sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
               Target = 'target_id', Value = 'value', NodeID = 'label',height = 4000,width = 1000)
 
 
+# #sankey plot on pathways ------------------------------------------------
 
 #prep data for individual drug to pathway association
 
 #expand kegg id
 
-df_sankey <- df[df$drug=='Pemetrexed',c('drug','idKEGG')]
+df_sankey <- df[,c('drug','idKEGG')]
 
 df_sankey <- tidyr::separate_rows(df_sankey,idKEGG, convert = TRUE, sep = ' ')
 
@@ -824,7 +1015,21 @@ sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
               Target = 'target_id', Value = 'value', NodeID = 'label')
 
 
-#plot top 10 associations with circlize
+
+# #single ion count per pathay --------------------------------------------
+
+tmp <- df_sankey %>% group_by(name, year1) %>% summarise(count = n())
+
+tmp <- subset(tmp, count >=4)
+
+library(ggplot2)
+ggplot(tmp, aes(y= name, x= year1, fill = count))+
+  geom_tile()+
+  theme(axis.text.x = element_text(angle = 45,hjust =1))
+
+
+
+#clirclize plot of top 10 associations ---------------------------------
 
 df$drugion <- paste(df$drug, df$ionIndex)
 
@@ -913,6 +1118,8 @@ circos.track(df$drug, y =df$slope.x,
 
 dev.off()
 circos.clear()
+
+
 
 # plot one interesting association ---------------------------------------------
 #doi = drug of interest
