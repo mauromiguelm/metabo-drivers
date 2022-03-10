@@ -139,7 +139,6 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
   }
 })
 
-
 # export log2fc data for clustering -------------------------------------
 
 #map concentrations
@@ -198,6 +197,38 @@ lapply(unique(metab_fcs$drug), function(drug_idx){
   write.csv(data, paste("data",drug_idx,"log2fc.csv",sep ="_"))
 })
 
+
+
+# export log2fc data for tdsR -------------------------------------
+
+#map concentrations
+
+setwd(paste0(path_fig,"\\tdsr"))
+
+metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
+
+metab_fcs <- do.call(rbind,metab_fcs)
+
+metab_fcs$X <- NULL
+names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
+
+lapply(unique(metab_fcs$drug), function(drug_idx){
+  tmp <- subset(metab_fcs, drug == drug_idx)
+  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
+  return(tmp)
+}) -> metab_fcs
+
+metab_fcs <- do.call(rbind, metab_fcs)
+
+#remove concs wih no drug effect or too strong drug effect
+
+ions_of_interest <- which(ions$name %in%c("Asparagine", "Aspartate"))
+
+ions_of_interest <- ions[ions_of_interest,]
+
+metab_tds <- subset(metab_fcs, ionIndex %in% ions_of_interest$ionIndex & drug == "Asparaginase")
+
+write.csv(metab_tds, "metabolomics-tdsr.csv")
 
 # metabolome similarity across drugs_conc_cell lines ----------------------
 #TODO replace raw intensities with log2fc when calculating simil
