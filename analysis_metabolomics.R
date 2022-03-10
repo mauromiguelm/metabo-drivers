@@ -853,6 +853,14 @@ for(idx in 1:dim(df)[1]){
 
 drug_cell_fc <- do.call(rbind, drug_cell_fc)
 
+#save results
+
+setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+
+write.csv(drug_cell_fc, "drug_cell_fc.csv")
+
+write.csv(drug_cell_ED50,"drug_cell_ED50.csv")
+
 
 #gap fill NA with high concentration
 
@@ -866,7 +874,9 @@ lapply(unique(drug_cell_fc$idx), function(idx){
 }) -> tmp
 
 setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+
 library(ggplot2)
+
 lapply(tmp, function(sub_data){
   #sub_data <- tmp[[737]]
   
