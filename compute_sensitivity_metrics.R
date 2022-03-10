@@ -471,7 +471,7 @@ setwd(path_data_file)
 cl <-makeCluster(numWorkers, type="PSOCK",outfile = "tmp_err.txt")
 
 # iterate over thresholds and calculate pvals/fdr
-get_random_threshold <- function(min,max, n_, dist = 10){
+get_random_threshold <- function(min,max, n_, dist = 40){
   #min = min value from vector to be sampled
   #max = max value from vector to be sampled
   #n = number of cutoffs
@@ -628,7 +628,7 @@ setwd(path_data_file)
 
 write.csv(file = 'counted_groups_ithreshold_GR24_RvsI_between20-90.csv',x = counted_groups)
 
-save(list="out_thresholds",file='iter_threshold_GR24_RvsI_between20-90.Rdata')
+save(list="out_thresholds",file='iter_threshold_GR24_RvsI_between20-90_diff40.Rdata')
 
 #save filtered RS groups
 
@@ -962,161 +962,3 @@ lapply(unique(tmp$agent), function(drug_idx){
   
   
 })
-
-# #calculate tdsR ---------------------------------------------------------
-
-lapply(c("P1","P2"), function(x){
-  
-  data_GRmetrics <- subset(data_corrected, source_plate == x)
-  
-  
-  data_Grmetrics_Ttm <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # preparing the data for one drug
-  data_Grmetrics_Ctr <- data_GRmetrics#[grepl(cell_line, rownames(data_GRmetrics)),] # getting the matching controls ready
-  
-  data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Drug %in% drugs_in_screen) #I chose clofarabine since it has a pretty dose response curve
-  data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Drug == "DMSO") # I separated the drug from the control, as its easier to parse
-  
-  # keep only matching time points
-  
-  match_time_intervals <- unique(intersect(data_Grmetrics_Ctr$Time, data_Grmetrics_Ttm$Time)) #make sure both datasets cover the same time
-  
-  data_Grmetrics_Ttm <- subset(data_Grmetrics_Ttm, Time %in% match_time_intervals)
-  data_Grmetrics_Ctr <- subset(data_Grmetrics_Ctr, Time %in% match_time_intervals)
-  
-  # Prepare data_Grmetrics_Ctr as example Case C
-  
-  data_Grmetrics_Ctr$time = data_Grmetrics_Ctr$Time
-  
-  tmp <- strsplit(x = rownames(data_Grmetrics_Ctr), "_")
-  
-  tmp <- lapply(tmp, "[[",1)
-  
-  tmp <- gsub(tmp, pattern = "/", replacement = "_")
-  
-  tmp <- strsplit(x = tmp, "_")
-  
-  tmp <- lapply(tmp, "[[",3)
-  
-  data_Grmetrics_Ctr$cell_line <- tmp
-  
-  data_Grmetrics_Ctr$agent = "-"
-  
-  data_Grmetrics_Ctr$concentration = 0
-  
-  data_Grmetrics_Ctr$cell_count <- data_Grmetrics_Ctr$Conf
-  
-  data_Grmetrics_Ctr <- data_Grmetrics_Ctr[,c("cell_line", "agent","time", "concentration", "cell_count")]
-  
-  rownames(data_Grmetrics_Ctr) <- NULL
-  
-  # Prepare data_Grmetrics_Ttm as example Case C
-  
-  head(data_Grmetrics_Ttm)
-  
-  data_Grmetrics_Ttm$time = data_Grmetrics_Ttm$Time
-  
-  tmp <- strsplit(x = rownames(data_Grmetrics_Ttm), "_")
-  
-  tmp <- lapply(tmp, "[[",1)
-  
-  tmp <- gsub(tmp, pattern = "/", replacement = "_")
-  
-  tmp <- strsplit(x = tmp, "_")
-  
-  tmp <- lapply(tmp, "[[",3)
-  
-  data_Grmetrics_Ttm$cell_line <- tmp; rm(tmp)
-  
-  data_Grmetrics_Ttm$agent <- (data_Grmetrics_Ttm$Drug)
-  
-  data_Grmetrics_Ttm$concentration = data_Grmetrics_Ttm$Final_conc_uM
-  
-  data_Grmetrics_Ttm$cell_count <- data_Grmetrics_Ttm$Conf
-  
-  data_Grmetrics_Ttm <- data_Grmetrics_Ttm[,c("cell_line", "agent","time", "concentration", "cell_count")]
-  
-  rownames(data_Grmetrics_Ttm) <- NULL
-  
-  # merge drug df and control df
-  
-  data_comb <- rbind(data_Grmetrics_Ctr, data_Grmetrics_Ttm)
-  
-  
-  #data_comb <-subset(data_comb, cell_line =="T47D" & agent %in% c("-", "Pemetrexed"))
-  
-  data_comb <-subset(data_comb, agent %in% c("-", drugs_in_screen))
-  
-  data_comb$cell_line <- as.character(data_comb$cell_line)
-  
-  data_comb <- subset(data_comb, time <= 100 & time >=0)
-  
-  tmp <- tdsR_fit(inputData = data_comb,
-                  groupingVariables = c("cell_line", "agent"),
-                  upperLimit = 0.8,
-                  upperLimitThreshold = 1.0,
-                  timeTreatment = 0, 
-                  smoothData = T,
-                  orderConc = T)
-  
-  return(tmp)
-})-> output_tdsR
-
-
-output_tdsR <- lapply(output_tdsR,function(x){tdsR_getOutput(x, metric = "tdsR")} )
-
-output_tdsR <- do.call(rbind, output_tdsR)
-
-#save output 
-
-setwd(path_data_file)
-
-write.csv(output_tdsR, "outcomes_tdsR.csv")
-
-#plot results
-
-output <- output_tdsR
-
-tmp <- strsplit(rownames(output_tdsR), split = " ")
-
-output$cell_line <- unlist(lapply(tmp, "[[", 1))
-
-output$agent <- unlist(lapply(tmp, "[[", 2))
-
-tmp <- subset(output, select= c(cell_line, agent, tds))
-
-tmp <- pivot_wider(tmp, values_from = tds, names_from = "cell_line")
-
-tmp_names <- tmp$agent
-
-tmp$agent <- NULL
-
-rownames(tmp) <- tmp_names
-
-tmp_colour <- ifelse(tmp >= 24, 1,0)
-
-
-setwd(paste(path_fig, sep = "\\"))
-png(paste("tdsR_24h",".png",sep="_"),height = 1200,width = 1200)
-heatmap.2(as.matrix(tmp_colour), trace="none", key=T,col = RColorBrewer::brewer.pal(n=3, "PuOr"), margins=c(16,16),
-          cexRow = 1.5,cexCol = 1.5,na.color = 'grey')
-dev.off()
-
-setwd(paste(path_fig, sep = "\\"))
-png(paste("tdsR",".png",sep="_"),height = 1200,width = 1200)
-heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "PuOr"), margins=c(16,16),
-          cexRow = 1.5,cexCol = 1.5,na.color = 'grey')
-dev.off()
-
-
-tmp <- subset(data_corrected, cell == "MALME3M" & Drug == "Omacetaxine")
-
-ggplot(tmp, aes(Time, Conf, col = factor(Final_conc_uM)))+
-  geom_point()
-
-
-# #TODO calculate tdsR-corrected GI50 ------------------------------------------
-#TODO calculate corrected GI50
-
-
-
-
