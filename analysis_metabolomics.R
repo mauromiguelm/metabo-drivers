@@ -6,12 +6,13 @@
 path_data_file = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
 path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
 #path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\metabolomics'
-path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
+#path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
 source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\plate_converter.R")
 library(openxlsx)
 library(dplyr)
 library(rhdf5)
+library(ggplot2)
 library(parallel)
 library(proxy)
 library(KEGGREST)
@@ -710,7 +711,17 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 write.csv(basal_associations, 'basal_association.csv')
 
 
+
 # Determining half effect concentration for relevant ions -----------------
+
+
+#import GR24 associations with metabolism
+
+#read associations
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
+df <- read.csv('metabolite_GR24_association_survivingCI.csv')
 
 #import full GR24 data
 
@@ -746,7 +757,7 @@ for(drug in unique(df$drug)){
     #cell ='IGROV1'
     #cell = "BT549"
     sub_drug_cell <- sub_drug[sub_drug$cell == cell,]
-    if(any(sub_drug_cell$percent_change_GR <200)){
+    if(any(sub_drug_cell$percent_change_GR <2000)){
 
       #order to eliminate bias from LOQ, non-linear effects
       sub_drug_cell <- sub_drug_cell[order(sub_drug_cell$Final_conc_uM),]
@@ -763,7 +774,7 @@ for(drug in unique(df$drug)){
         E0 <- NA
         Einf <- NA
         ED50 <-  NA
-        model = NULL
+        model = "undefined"
       }else{
         h <-  model$coefficients[1]
         E0 <- model$coefficients[2]
@@ -825,7 +836,7 @@ for(idx in 1:dim(df)[1]){
       E0 <- NA
       Einf <- NA
       ED50 <- NA
-      model = NULL
+      model <- "Undefined"
     }else{
       h <-  model$coefficients[1]
       E0 <- model$coefficients[2]
@@ -861,6 +872,15 @@ write.csv(drug_cell_fc, "drug_cell_fc.csv")
 
 write.csv(drug_cell_ED50,"drug_cell_ED50.csv")
 
+#TODO save models, so I can use them later
+
+#read results
+
+setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+
+drug_cell_fc <- read.csv("drug_cell_fc.csv")
+
+drug_cell_ED50 <- read.csv("drug_cell_ED50.csv")
 
 #gap fill NA with high concentration
 
@@ -891,16 +911,16 @@ lapply(tmp, function(sub_data){
   
   stat_EC50 <- wilcox.test(value~name, data_merged,exact=F)$p.value
   
-  
   mean_data <- aggregate(value ~ name, data = data_merged, FUN= "median" )
   
   GR_eff <- mean_data[mean_data$name=='GR24',2]<mean_data[mean_data$name=='log2fc',2]
-  GR_diff <- abs(mean_data[mean_data$name=='GR24',2]-mean_data[mean_data$name=='log2fc',2])
+  #GR_diff <- abs(mean_data[mean_data$name=='GR24',2]-mean_data[mean_data$name=='log2fc',2])
   
+  GR_diff = mean_data[mean_data$name=='GR24',2]/mean_data[mean_data$name=='log2fc',2]
   metab_name <- gsub(":", "-",sub_fc$name)
   metab_name <- gsub("/", "-",metab_name)
-  
-  if(stat_EC50<0.05 & GR_diff>3){
+  PASS = (stat_EC50<0.05 & GR_diff>2)
+  if(stat_EC50<0.05 & GR_diff>2){
     ggplot(data_merged, aes(name, value, fill = name))+
       geom_boxplot()+
       # geom_point() is used to plot data points on boxplot
@@ -911,35 +931,30 @@ lapply(tmp, function(sub_data){
     
   }
   
-  return(list(stat_EC50,GR_eff,GR_diff))
+  return(data.frame(stat_EC50,GR_eff,GR_diff, PASS))
   
 }) -> tmp
 
+EC50_statistics <- data.frame(do.call(rbind,tmp))
 
-sum(unlist(lapply(tmp,"[[",1))<0.05 & unlist(lapply(tmp,"[[",2))==F & unlist(lapply(tmp,"[[",3))>3)/length(tmp)
+colnames(EC50_statistics) <- c("pvalue",'GR_eff',"EC50_FC", "PASS")
 
+EC50_statistics$association_index = 1:dim(df)[1]
+
+setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+
+write.csv(EC50_statistics, "statistics_EC50.csv")
 
 library(ggplot2)
-
-ggplot(data_merged, aes(name, value, fill = name))+
-  geom_boxplot()+
-  # geom_point() is used to plot data points on boxplot
-  geom_jitter(aes(fill=name,group=cell),size=3,shape=21)+
-  ylab('ED50')
-
-ggplot(data_merged %>% mutate(x = (name), y = jitter(value)),
-       aes(x = x, y = y, col = name)) +
-  geom_point()+
-  geom_line(aes(group=cell), col = "grey50")+
-  xlab('name')+
-  ylab('ED50')
 
 #plot fitting
 
 plot(0,0,xlim = c(0,5),ylim = c(0,1),type = "n",xlab='Dose',ylab='Effect')
 cols = rev(heat.colors(length(models)))
 dose=seq(0,5,0.1)
+
 for(x in 1:length(models_GR24)){
+  print(x)
 
   model = models_GR24[[x]]
 
@@ -960,9 +975,20 @@ for(x in 1:length(models_GR24)){
   }
 }
 
-xlab('dasdsad')
 
-# plot top ranked interesting associations -----------------------
+
+# combine all metrics into one matrix -------------------------------------
+
+
+#read EC50 results
+
+setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+
+drug_cell_fc <- read.csv("drug_cell_fc.csv")
+
+drug_cell_ED50 <- read.csv("drug_cell_ED50.csv")
+
+EC50_statistics <- read.csv("statistics_EC50.csv")
 
 #select the ions that survived permutation thresohld
 
@@ -975,7 +1001,43 @@ df$color <- ifelse(df$slope<0, "Negative", "Positive")
 tmp_ions <- ions[,c("ionIndex",'mzLabel','idKEGG','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
 
 df <- merge(df, tmp_ions, by='ionIndex')
+
 write.csv(df, file = 'metabolite_GR24_association_survivingCI_ionLabel.csv')
+
+# combine log2fc/GI50 association with basal/treated metabolome association
+
+df$association_index = 1:dim(df)[1]
+
+setwd(path_data_file)
+df$drugion <- paste(df$drug, df$ionIndex)
+basal_associations <- read.csv('basal_association.csv')
+
+basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
+
+df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
+
+
+#combine GR50 association
+
+df <- merge(df, EC50_statistics, by= "association_index")
+
+df$GR24_link <- ifelse(df$slope.x<0, "Sensitivity", "Resistant")
+df$basal_change <- ifelse(df$slope.y<1, "synthesis", "consumption")
+df$GR_independence <- df$PASS
+
+#save full with all 3 metrics
+
+setwd(path_data_file)
+setwd("..")
+write.csv(df, "drug_metabolite_associations.csv")
+
+#generate statistics as results
+
+stats_associations <-  xtabs(~basal_change+GR24_link+GR_independence, df)
+
+# plot top ranked interesting associations -----------------------
+
+
 #number of associations per metabolite with diferent drugs (plot)
 
 tmp <- df %>% group_by(ionIndex) %>% dplyr::summarise(count_metab = n())
@@ -1131,8 +1193,8 @@ df <- df %>% group_by(drug) %>%dplyr::arrange(abs(slope)) %>%  dplyr::mutate(slo
 
 # combine log2fc/GI50 association with basal/treated metabolome association
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
+#setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+setwd(path_data_file)
 basal_associations <- read.csv('basal_association.csv')
 
 basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
@@ -1185,6 +1247,20 @@ col2 = colorRamp2(c(min(df$slope.y), 1, max(df$slope.y)), c("blue", "grey", "red
 df$color2 <- col2(df$slope.y)
 circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x,col = df$color2 ,pch = 16)
 
+
+# add EC50 analysis 
+
+circos.track(df$drug, y =df$slope.x,
+             panel.fun = function(x, y) {
+               #circos.axis(major.tick = F,labels = NULL)
+             },bg.border = NA)
+
+df$color3 <- viridis::viridis(2)[df$PASS+1]
+
+circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x,col = df$color3 ,pch = 16)
+
+# add drug name
+
 circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
                #circos.axis(major.tick = F,labels = NULL)
@@ -1194,24 +1270,35 @@ circos.track(df$drug, y =df$slope.x,
 color = viridis::viridis(nrow(df))
 i=1
 for(x in (df$drug)){
-  highlight.sector(track.index = 4,col = color[i],sector.index = x)
+  highlight.sector(track.index = 5,col = color[i],sector.index = x)
   i=i+1
 }
 
-
 circos.track(df$drug, y =df$slope.x,
              panel.fun = function(x, y) {
-               circos.text(CELL_META$xcenter,track.index = 5,
+               circos.text(CELL_META$xcenter,track.index = 6,
                            CELL_META$cell.ylim[2] - mm_y(13),
                            CELL_META$sector.index,cex = 1,facing = 'clockwise',niceFacing = T)
              },bg.border = NA)
 
-
-
 dev.off()
 circos.clear()
 
+# plot summary of ED50
 
+
+df$PASS <-  as.numeric(df$pvalue.y<0.05 & df$EC50_FC>2)
+
+EC50_stats_by_drug <- do.call(data.frame, aggregate(PASS~drug, df,  FUN = function(x) c(count = sum(x), total = length(x))))
+
+EC50_stats_by_drug$PASS.percentage <- EC50_stats_by_drug$PASS.count/EC50_stats_by_drug$PASS.total
+mail
+ggplot(EC50_stats_by_drug, aes(x=reorder(drug, PASS.percentage),y=PASS.percentage))+
+  geom_bar(stat = 'identity')+
+  theme(axis.text.x = element_text(angle = 45,hjust = 1, vjust = 1)) -> plt
+
+ggsave(paste0(path_fig,"","\\GI50_associations\\", "fraction_GI50.pdf"),plot = plt,  width = 25, height = 15, units = "cm")
+  
 
 # plot one interesting association ---------------------------------------------
 #doi = drug of interest
@@ -1229,7 +1316,6 @@ lapply(unique(tmp2$drug), function(drug_idx){
 }) -> tmp2
 
 tmp2 <- do.call(rbind, tmp2)
-
 
 tmp2$experiment <- paste(tmp2$cell_line, tmp2$drug,tmp2$conc, sep = "_")
 
