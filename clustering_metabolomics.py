@@ -103,7 +103,8 @@ def plot_embeddings(embedding, meta, drug):
     fig.set(xlabel=None, ylabel = None)
     fig.set(title = 'UMAP projection of: '+drug + ' col=GR24')
     fig.tight_layout()
-    fig.savefig(drug + "_full_col=GR24.png")
+    plt.savefig(drug + "_full_col=GR24.png")
+    plt.close()
 
     #plot embeddings colored by cell
     fig = sns.relplot(x=embedding[:, 0],
@@ -112,7 +113,8 @@ def plot_embeddings(embedding, meta, drug):
     fig.set(xlabel=None, ylabel = None)
     fig.set(title = 'UMAP projection of: '+drug+' col=cell')
     fig.tight_layout()
-    fig.savefig(drug + "_full_col=cell.png")
+    plt.savefig(drug + "_full_col=cell.png")
+    plt.close()
 
     # plot embeddings colored by drug
     fig = sns.relplot(x=embedding[:, 0],
@@ -121,7 +123,8 @@ def plot_embeddings(embedding, meta, drug):
     fig.set(xlabel=None, ylabel=None)
     fig.set(title='UMAP projection of: ' + drug + ' col=drug')
     fig.tight_layout()
-    fig.savefig(drug + "_full_col=drug.png")
+    plt.savefig(drug + "_full_col=drug.png")
+    plt.close()
 
     # plot embeddings colored by concentration
     fig = sns.relplot(x=embedding[:, 0],
@@ -131,7 +134,8 @@ def plot_embeddings(embedding, meta, drug):
     fig.set(xlabel=None, ylabel = None)
     fig.set(title = 'UMAP projection of: '+drug + ' col=conc')
     fig.tight_layout()
-    fig.savefig(drug + "_full_col=conc.png")
+    plt.savefig(drug + "_full_col=conc.png")
+    plt.close()
 
     # plot embeddings colored by clusters
     fig = sns.relplot(x=embedding[:, 0],
@@ -141,7 +145,9 @@ def plot_embeddings(embedding, meta, drug):
     fig.set(xlabel=None, ylabel=None)
     fig.set(title='UMAP projection of: ' + drug + ' col=cluster')
     fig.tight_layout()
-    fig.savefig(drug + "_full_col=clusters.png")
+    plt.savefig(drug + "_full_col=clusters.png")
+    plt.close()
+
 
 def main():
     pass
@@ -156,8 +162,8 @@ if __name__ = "__main__":
     #drug-by-drug clustering
 
     hspace = {'n_neighbors':hyperopt.hp.choice('n_neighbors',range(2,20)),
-             'n_components':hyperopt.hp.choice('n_components',range(2,5)),
-             'min_cluster_size':hyperopt.hp.choice('min_cluster_size',range(4,20)),
+             'n_components':hyperopt.hp.choice('n_components',range(2,7)),
+             'min_cluster_size':hyperopt.hp.choice('min_cluster_size',range(4,100)),
              "prob_threshold":0.1,
              'penalty':0.15,
              'n_evals':250,
@@ -181,7 +187,8 @@ if __name__ = "__main__":
 
         results[drug] = [a,b]
 
-        os.chdir(path_data)
+
+    os.chdir(path_data)
 
     summary_best_params = [results[x][0] for x in results.keys()]
 
@@ -199,6 +206,16 @@ if __name__ = "__main__":
 
     with open('opt_clustering.pkl', 'wb') as f:
         pickle.dump(results, f)
+
+    results = []
+    with (open("opt_clustering.pkl", "rb")) as f:
+        while True:
+            try:
+                results.append(pickle.load(f))
+            except EOFError:
+                break
+
+
 
     for drug in drugs:
         """
@@ -222,6 +239,12 @@ if __name__ = "__main__":
                                      min_cluster_size=params['min_cluster_size'])
 
         metadata['clusters'] = clusters.labels_
+
+        #save results
+
+        os.chdir(path_data+'\\cluster_labels')
+
+        metadata.to_csv('clusterLabels_'+drug+'.csv')
 
         embeddings = collect_UMAP_embeddings(data,
                                              n_neighbors=params['n_neighbors'],
@@ -262,10 +285,10 @@ if __name__ = "__main__":
         data.append(import_and_transform_data(path_data + "\\log2fc_full" + "\\data_" + drug + '_log2fc.csv'))
         metadata.append(import_and_transform_data(path_data + "\\log2fc_full" + "\\metadata_" + drug + '_log2fc.csv'))
 
-    data = pd.concat(data)
-    metadata = pd.concat(metadata)
+        data = pd.concat(data)
+        metadata = pd.concat(metadata)
 
-    a, b = bayesian_search(data, space=hspace, n_evals=hspace['n_evals'])
+        a, b = bayesian_search(data, space=hspace, n_evals=hspace['n_evals'])
 
     os.chdir(path_data)
 
