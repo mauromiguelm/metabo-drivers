@@ -31,6 +31,11 @@ metab_fcs <- do.call(rbind,metab_fcs)
 metab_fcs$X <- NULL
 names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
 
+#import cell metadata from depmap 
+
+setwd("C:\\Users\\mauro\\Documents\\phd_results\\metadata_cells")
+
+cell_metadata <- read.csv("metadata_cells_depmap.csv")
 
 #import cleaned metadata
 
@@ -156,7 +161,7 @@ setwd(path_data_file)
 
 write.csv(output_GI50, "outcomes_growth_inhibition50.csv")
 
-#plot results
+#plot results for GR24
 
 tmp <- subset(data_corrected,Time == 24, select= c('Drug', 'cell', "GR24", "Final_conc_uM"))
 
@@ -181,16 +186,15 @@ heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=1
           cexRow = 1.5,cexCol = 1.5,na.color = 'grey', scale = 'col')
 dev.off()
 
+#plot results for GI50
+
 tmp <- output_GI50[,c("cell_line", "agent","GR50")]
 
 tmp$GR50 <- log10(tmp$GR50)
 
-tmp$GR50 <- ifelse(is.infinite(tmp$GR50),NA,tmp$GR50)
-
-
 tmp <- pivot_wider(tmp, values_from = GR50, names_from = "cell_line")
 
-tmp <- tmp[rowSums(is.na(tmp)) != ncol(tmp), ]
+tmp <- data.frame(tmp)
 
 tmp_names <- tmp$agent
 
@@ -198,11 +202,16 @@ tmp$agent <- NULL
 
 rownames(tmp) <- tmp_names
 
+tmp <- t(apply(tmp, 1,function(x) ifelse(is.infinite(x),max(x[is.finite(x)]*1.1,na.rm = T),x)))
+
+tmp <- ifelse(is.infinite(tmp),NA,tmp)
+
+tmp <- tmp[rowSums(is.na(tmp)) != ncol(tmp), ]
 
 setwd(paste(path_fig,"GR50", sep = "\\"))
 png(paste("GR50",".png",sep="_"),height = 1200,width = 1200)
 heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "PiYG"), margins=c(16,16),
-          cexRow = 2.0,cexCol = 2.5,na.color = 'grey', scale = 'row',Rowv = 'none',Colv = 'none',keysize=0.75)
+          cexRow = 1.0,cexCol = 1.5,scale = 'row')
 dev.off()
 
 
@@ -334,7 +343,79 @@ setwd(path_data_file)
 
 write.csv(output_conf, "outcomes_conf_change_to_control.csv")
 
-#plot results
+# plot phenotypic results -------------------------------------------------
+
+
+#plot results for GR24 as heatmap
+
+tmp <- subset(data_corrected,Time == 24, select= c('Drug', 'cell', "GR24", "Final_conc_uM"))
+
+tmp <- tmp%>% dplyr::group_by(cell, Drug, Final_conc_uM) %>% dplyr::summarise(GR24 = mean(GR24))
+
+tmp <- tmp%>% group_by(cell, Drug) %>%
+  dplyr::slice(which.max(Final_conc_uM))
+
+tmp$Final_conc_uM <- NULL
+
+tmp <- pivot_wider(tmp, values_from = GR24, names_from = "cell")
+
+tmp_names <- tmp$Drug
+
+tmp$Drug <- NULL
+
+rownames(tmp) <- tmp_names
+
+setwd(paste(path_fig,"GR24", sep = "\\"))
+png(paste("GR24",".png",sep="_"),height = 1200,width = 1200)
+heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "PuOr"), margins=c(16,16),
+          cexRow = 1.5,cexCol = 1.5,na.color = 'grey', scale = 'col')
+dev.off()
+
+#plot results for GI50 as heatmap 
+
+tmp <- output_GI50[,c("cell_line", "agent","GR50")]
+
+tmp$GR50 <- log10(tmp$GR50)
+
+tmp <- pivot_wider(tmp, values_from = GR50, names_from = "cell_line")
+
+tmp <- data.frame(tmp)
+
+tmp_names <- tmp$agent
+
+tmp$agent <- NULL
+
+rownames(tmp) <- tmp_names
+
+tmp <- t(apply(tmp, 1,function(x) ifelse(is.infinite(x),max(x[is.finite(x)]*1.1,na.rm = T),x)))
+
+tmp <- ifelse(is.infinite(tmp),NA,tmp)
+
+tmp <- tmp[rowSums(is.na(tmp)) != ncol(tmp), ]
+
+labels_heatmap <- cell_metadata[order(match(cell_metadata$cell_line_display_name, colnames(tmp))),]
+
+library(RColorBrewer)
+
+labels_heatmap$colors <- as.character(factor(labels_heatmap$lineage_1, labels = RColorBrewer::brewer.pal(length(unique(labels_heatmap$lineage_1)), "Spectral")))
+
+setwd(paste0(path_fig,'\\phenotype_figures'))
+
+drugs_of_heatmap <- rownames(tmp)
+
+pdf("GR50_phenotypes_72_legend.pdf")
+heatmap_dendogram <- heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "RdBu"), margins=c(16,16),
+          cexRow = 0.85,cexCol = 0.85,scale = 'row',ColSideColors = labels_heatmap$colors)
+
+legend(x="bottomright", legend=c(labels_heatmap[!duplicated(labels_heatmap$lineage_1),]$lineage_1), 
+       fill=labels_heatmap[!duplicated(labels_heatmap$lineage_1),]$colors)
+dev.off()
+
+#import GR24 data
+
+setwd(path_data_file)
+
+output_GR24 <- read.csv("outcomes_GR24.csv")
 
 tmp <- output_GR24
 
@@ -387,6 +468,91 @@ lapply(unique(tmp$Drug), function(drug_idx){
   
   
 })
+
+# plot variance for each pair of cell and drug
+
+GR24_var <- output_GR24 %>% dplyr::group_by(Drug,cell) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+
+GR24_var <- pivot_wider(GR24_var,values_from = variation, names_from = Drug)
+GR24_var <- data.frame(GR24_var)
+rownames(GR24_var) <- GR24_var$cell
+GR24_var$cell <- NULL
+
+labels_heatmap <- cell_metadata[order(match(cell_metadata$cell_line_display_name, rownames(GR24_var))),]
+
+
+labels_heatmap$colors <- as.character(factor(labels_heatmap$lineage_1, labels = RColorBrewer::brewer.pal(length(unique(labels_heatmap$lineage_1)), "Spectral")))
+library(RColorBrewer)
+
+m=as.matrix((GR24_var))
+plt <- heatmap(m,scale = "row",col = bluered(100), RowSideColors = labels_heatmap$colors)
+dev.off()
+
+# plot basal growth rates at time of sampling, drug == PBS
+
+GR_basal_24h <- subset(data_corrected, Time == 24 & Drug %in% c("PBS"))
+
+GR_basal_24h$cell <- factor(GR_basal_24h$cell, levels = labels_heatmap$cell_line_display_name[rev(plt$rowInd)])
+
+ggplot(GR_basal_24h, aes(cell, GR24))+
+  geom_boxplot()+
+  scale_y_continuous(limits = c(0,0.07))+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1))
+
+# plot avg basal growth rates at time of sampling, drug == PBS
+
+GR24_basal_avg <- data.frame(GR_basal_24h %>% group_by(cell) %>% dplyr::summarize(avg_basal_GR24 = median(GR24)))
+
+rownames(GR24_basal_avg) <- GR24_basal_avg$cell
+
+GR24_basal_avg$cell <- NULL
+
+GR24_basal_avg$tmp <- GR24_basal_avg$avg_basal_GR24
+
+GR24_basal_avg <- GR24_basal_avg[rownames(GR24_basal_avg)[heatmap_dendogram$colInd],]
+
+
+setwd(paste0(path_fig,'\\phenotype_figures'))
+
+pdf("GR_median_24h.pdf")
+heatmap.2(as.matrix(GR24_basal_avg), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "PiYG"), margins=c(16,16),
+          cexRow = 0.85,cexCol = 0.85,scale = 'none',Rowv = "null",Colv = "null")
+
+dev.off()
+
+# plot basal growth rates at time of sampling, drug == all controls
+
+GR_basal_24h <- subset(data_corrected, Time == 24 & Drug %in% c("PBS", "DMSO"))
+
+GR_basal_24h$cell <- factor(GR_basal_24h$cell, levels = labels_heatmap$cell_line_display_name[rev(plt$rowInd)])
+
+ggplot(GR_basal_24h, aes(cell, GR24, colour = Drug))+
+  geom_boxplot()+
+  scale_y_continuous(limits = c(0,0.07))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1))
+
+
+# plot variance across concentratin for each pair of cell and drug
+
+GR24_var <- output_GR24 %>% dplyr::group_by(Drug,Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+
+GR24_var <- pivot_wider(GR24_var,values_from = variation, names_from = Final_conc_uM)
+GR24_var <- data.frame(GR24_var)
+rownames(GR24_var) <- GR24_var$Drug
+GR24_var$Drug <- NULL
+
+GR24_var <-GR24_var[rev(na.omit(drugs_of_heatmap[heatmap_dendogram$rowInd],match(rownames(GR24_var) ))),] 
+
+library(viridis)
+
+setwd(paste0(path_fig,'\\phenotype_figures'))
+
+pdf("variance_across_concentration.pdf")
+heatmap.2(abs(as.matrix(GR24_var)), trace="none", key=T,col = viridis(20), margins=c(16,16),
+          cexRow = 0.65,cexCol = 0.65,scale = 'row',Rowv = "null",Colv = "null")
+dev.off()
+
 
 # define groups R/S based on GR24 ----------------------------
 
