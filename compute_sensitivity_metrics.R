@@ -163,6 +163,10 @@ write.csv(output_GI50, "outcomes_growth_inhibition50.csv")
 
 #plot results for GR24
 
+setwd(path_data_file)
+
+output_GI50 <- read.csv("outcomes_growth_inhibition50.csv")
+
 tmp <- subset(data_corrected,Time == 24, select= c('Drug', 'cell', "GR24", "Final_conc_uM"))
 
 tmp <- tmp%>% dplyr::group_by(cell, Drug, Final_conc_uM) %>% dplyr::summarise(GR24 = mean(GR24))
@@ -345,7 +349,6 @@ write.csv(output_conf, "outcomes_conf_change_to_control.csv")
 
 # plot phenotypic results -------------------------------------------------
 
-
 #plot results for GR24 as heatmap
 
 tmp <- subset(data_corrected,Time == 24, select= c('Drug', 'cell', "GR24", "Final_conc_uM"))
@@ -373,11 +376,11 @@ dev.off()
 
 #plot results for GI50 as heatmap 
 
-tmp <- output_GI50[,c("cell_line", "agent","GR50")]
+tmp <- output_GI50[,c("cell_line", "agent","IC50")]
 
-tmp$GR50 <- log10(tmp$GR50)
+tmp$IC50 <- log10(tmp$IC50)
 
-tmp <- pivot_wider(tmp, values_from = GR50, names_from = "cell_line")
+tmp <- pivot_wider(tmp, values_from = IC50, names_from = "cell_line")
 
 tmp <- data.frame(tmp)
 
@@ -387,7 +390,7 @@ tmp$agent <- NULL
 
 rownames(tmp) <- tmp_names
 
-tmp <- t(apply(tmp, 1,function(x) ifelse(is.infinite(x),max(x[is.finite(x)]*1.1,na.rm = T),x)))
+tmp <- t(apply(tmp, 1,function(x) ifelse(is.infinite(x),max(x[is.finite(x)]*1,na.rm = T),x)))
 
 tmp <- ifelse(is.infinite(tmp),NA,tmp)
 
@@ -403,7 +406,7 @@ setwd(paste0(path_fig,'\\phenotype_figures'))
 
 drugs_of_heatmap <- rownames(tmp)
 
-pdf("GR50_phenotypes_72_legend.pdf")
+pdf("IC50_phenotypes_72_legend.pdf")
 heatmap_dendogram <- heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "RdBu"), margins=c(16,16),
           cexRow = 0.85,cexCol = 0.85,scale = 'row',ColSideColors = labels_heatmap$colors)
 
@@ -509,6 +512,9 @@ rownames(GR24_basal_avg) <- GR24_basal_avg$cell
 GR24_basal_avg$cell <- NULL
 
 GR24_basal_avg$tmp <- GR24_basal_avg$avg_basal_GR24
+
+
+GR24_basal_avg <- GR24_basal_avg[order(rownames(GR24_basal_avg)),] 
 
 GR24_basal_avg <- GR24_basal_avg[rownames(GR24_basal_avg)[heatmap_dendogram$colInd],]
 
