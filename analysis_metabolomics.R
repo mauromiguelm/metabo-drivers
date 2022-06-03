@@ -687,8 +687,6 @@ lapply(unique(ions$ionIndex), function(ionidx){
 
     }
 
-
-
   })
 
 
@@ -1035,13 +1033,64 @@ write.csv(df, "drug_metabolite_associations.csv")
 
 stats_associations <-  xtabs(~basal_change+GR24_link+GR_independence, df)
 
+
+# plot associations by drug, heatmap by metrics ---------------------------
+
+#import results
+
+setwd(path_data_file)
+setwd("..")
+df <- read.csv("drug_metabolite_associations.csv")
+
+lapply(unique(df$drug), function(drug){
+  
+  tmp <- df[df$drug==drug,]
+  
+  #subset ion and the tree metrics
+  
+  tmp <- tmp[,c("name","GR_independence","slope.y","slope.x")]
+  
+  colnames(tmp) <- c("Metabolite","GR independence", "Basal effect", "Growth phenotype")
+  
+  tmp <- tidyr::pivot_longer(tmp,-Metabolite, names_to = "metric")
+  
+  tmp$metric <- factor(tmp$metric,levels = c("GR independence", "Basal effect", "Growth phenotype"))
+  
+  tmp$color <- NA
+  
+  tmp$color <- ifelse(tmp$metric=="Growth phenotype" & tmp$value<0, "#FF0000", tmp$color)
+  tmp$color <- ifelse(tmp$metric=="Growth phenotype" & tmp$value>0, "green4", tmp$color)
+  tmp$color <- ifelse(tmp$metric=="Basal effect" & tmp$value<1, "blue", tmp$color)
+  tmp$color <- ifelse(tmp$metric=="Basal effect" & tmp$value>1, "red", tmp$color)
+  tmp$color <- ifelse(tmp$metric=="GR independence" & tmp$value==0, viridis::viridis(2)[1], tmp$color)
+  tmp$color <- ifelse(tmp$metric=="GR independence" & tmp$value==1, viridis::viridis(2)[2], tmp$color)
+  
+  setwd(paste0(path_fig, "\\association_heatmap_by_drug"))
+  ggplot(tmp, aes(metric, Metabolite))+
+    geom_point(aes(size = value, fill = color), alpha = 0.75, shape = 21) + 
+    #scale_size_continuous(limits =, range = c(1,17), breaks = c(1,10,50,75)) + 
+    labs( x= "", y = "", size = "Slope", fill = "")  + 
+    theme(legend.key=element_blank(), 
+          axis.text.x = element_text(colour = "black", size = 12, face = "bold", angle = 90, vjust = 0.3, hjust = 1), 
+          axis.text.y = element_text(colour = "black", face = "bold", size = 11), 
+          legend.text = element_text(size = 10, face ="bold", colour ="black"), 
+          legend.title = element_text(size = 12, face = "bold"), 
+          panel.background = element_blank(), panel.border = element_rect(colour = "black", fill = NA, size = 1.2), 
+          legend.position = "right")+
+    scale_fill_identity(aes(color)) -> plt
+  
+  ggsave(paste(drug, "h1.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.34,width = 8, limitsize = F)
+  ggsave(paste(drug, "h2.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.5,width = 8, limitsize = F)
+  
+
+})
+
 # plot top ranked interesting associations -----------------------
 
 
 #number of associations per metabolite with diferent drugs (plot)
 
 tmp <- df %>% group_by(ionIndex) %>% dplyr::summarise(count_metab = n())
-
 
 setwd(path_fig)
 
