@@ -1042,12 +1042,24 @@ stats_associations <-  xtabs(~basal_change+GR24_link+GR_independence, df)
 
 tmp <- df %>% group_by(ionIndex) %>% dplyr::summarise(count_metab = n())
 
+
+setwd(path_fig)
+
 ggplot(tmp, aes(x=count_metab, fill = factor(count_metab)))+
   geom_bar()+
   scale_fill_manual("legend", values = viridis::rocket(15))+
   theme_bw()+
-  theme(legend.position = "none")
+  ylab("Number of metabolites")+
+  xlab("Number of drugs")+
+  theme(axis.text.x = element_text(size = 25),axis.text.y = element_text(size = 25),
+        axis.ticks = element_line(size = 1),axis.ticks.length = unit(.25, "cm"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  scale_y_continuous(limits = c(0,80), breaks = seq(0,80,20))+
+  scale_x_continuous(limits = c(0,20), breaks = seq(0,16,4))+
+  theme(legend.position = "none") -> plt
 
+ggsave("number_metabs_associated_with_number_drugs.pdf",plt,device = "pdf",width=5, height=4,scale = 0.9)
 
 # #sankey plot of positive associations -----------------------------------
 
