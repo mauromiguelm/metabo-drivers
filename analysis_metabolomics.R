@@ -1065,10 +1065,12 @@ lapply(unique(df$drug), function(drug){
   tmp$color <- ifelse(tmp$metric=="GR independence" & tmp$value==0, viridis::viridis(2)[1], tmp$color)
   tmp$color <- ifelse(tmp$metric=="GR independence" & tmp$value==1, viridis::viridis(2)[2], tmp$color)
   
+  tmp$value <- ifelse(tmp$metric=="GR independence", 1,tmp$value)
+  
   setwd(paste0(path_fig, "\\association_heatmap_by_drug"))
   ggplot(tmp, aes(metric, Metabolite))+
-    geom_point(aes(size = value, fill = color), alpha = 0.75, shape = 21) + 
-    #scale_size_continuous(limits =, range = c(1,17), breaks = c(1,10,50,75)) + 
+    geom_point(aes(size = abs(value), fill = color), alpha = 0.75, shape = 21) + 
+    scale_size_continuous(limits = c(0,round(max(abs(tmp$value)))+1),breaks = round(seq(0,round(max(abs(tmp$value)))+1,length.out=5))) + 
     labs( x= "", y = "", size = "Slope", fill = "")  + 
     theme(legend.key=element_blank(), 
           axis.text.x = element_text(colour = "black", size = 12, face = "bold", angle = 90, vjust = 0.3, hjust = 1), 
@@ -1079,9 +1081,10 @@ lapply(unique(df$drug), function(drug){
           legend.position = "right")+
     scale_fill_identity(aes(color)) -> plt
   
-  ggsave(paste(drug, "h1.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.34,width = 8, limitsize = F)
-  ggsave(paste(drug, "h2.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.5,width = 8, limitsize = F)
-  
+  ggsave(paste(drug, "h1.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.34,width = 7, limitsize = F)
+  ggsave(paste(drug, "h0.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.4,width = 7, limitsize = F)
+  ggsave(paste(drug, "h2.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.5,width = 7, limitsize = F)
+  ggsave(paste(drug, "h3.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.3,width = 9, limitsize = F)
 
 })
 
