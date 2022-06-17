@@ -2,11 +2,11 @@
 
 # load packages and definitions -------------------------------------------
 
-#path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
-path_data_file = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
-path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
-#path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\metabolomics'
-#path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
+path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data_mean'
+#path_data_file = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
+#path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
+path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean\\metabolomics'
+path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
 source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\plate_converter.R")
 library(openxlsx)
@@ -28,11 +28,11 @@ GR24_outliers_low <- read.csv('GR24_outliers_low.csv')
 
 setwd(path_metabolomics_in)
 
-dataContent<- h5ls("metabolomics_raw.h5")
+dataContent<- h5ls("MM4_Mean mean_norm_DATA.h5")
 
-data<- rhdf5::h5read(file = "metabolomics_raw.h5", '/data')
+data<- rhdf5::h5read(file = "MM4_Mean mean_norm_DATA.h5", '/data')
 
-ions <- rhdf5::h5read(file = "metabolomics_raw.h5", '/annotation')
+ions <- rhdf5::h5read(file = "MM4_Mean mean_norm_DATA.h5", '/annotation')
 
 ions <- data.frame(ions)
 
@@ -166,7 +166,7 @@ metab_fcs <- do.call(rbind, metab_fcs)
 metab_fcs$cell_drug_conc <- paste(metab_fcs$cell_line,metab_fcs$drug,metab_fcs$conc)
 
 setwd(path_data_file)
-setwd("..")
+
 groups_to_keep <-read.csv('outcomes_GR24.csv')
 #
 # groups_to_keep <- subset(RS_groups, !is.na(percent_change_GR))
@@ -665,21 +665,21 @@ lapply(unique(ions$ionIndex), function(ionidx){
 
       if(!length(unique(metadata_doi$cell))==length(unique(metadata_control$cell))){stop('diverging number of cell lines across groups')}
 
-      data_mean_control <- data[ionidx,metadata_control$idx]
+      data_median_control <- data[ionidx,metadata_control$idx]
 
-      data_mean_control <- cbind(metadata_control,data.frame("intensities" = data_mean_control))
-      #TODO replace mean with median
-      data_mean_control <- data_mean_control %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = mean(intensities))
+      data_median_control <- cbind(metadata_control,data.frame("intensities" = data_median_control))
+  
+      data_median_control <- data_median_control %>% dplyr::group_by(cell) %>% dplyr::summarize(median_ion = median(intensities))
 
-      data_mean_drug <- data[ionidx,metadata_doi$idx]
+      data_median_drug <- data[ionidx,metadata_doi$idx]
 
-      data_mean_drug <- cbind(metadata_doi,data.frame("intensities" = data_mean_drug))
-      #TODO replace mean with median
-      data_mean_drug <- data_mean_drug %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = mean(intensities))
+      data_median_drug <- cbind(metadata_doi,data.frame("intensities" = data_median_drug))
+      
+      data_median_drug <- data_median_drug %>% dplyr::group_by(cell) %>% dplyr::summarize(median_ion = median(intensities))
 
-      comb_data <- merge(data_mean_control, data_mean_drug, by = 'cell')
-      #TODO add log10
-      slope <- lm(mean_ion.y~mean_ion.x, comb_data)
+      comb_data <- merge(data_median_control, data_median_drug, by = 'cell')
+      
+      slope <- lm(median_ion.y~median_ion.x, comb_data)
 
       pvalue <- summary(slope)
 
@@ -708,10 +708,7 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 write.csv(basal_associations, 'basal_association.csv')
 
-
-
 # Determining half effect concentration for relevant ions -----------------
-
 
 #import GR24 associations with metabolism
 
@@ -723,7 +720,7 @@ df <- read.csv('metabolite_GR24_association_survivingCI.csv')
 
 #import full GR24 data
 
-setwd(paste0(path_fig))
+setwd(paste0(path_data_file))
 
 outcomes_GR24 <- read.csv("outcomes_GR24.csv")
 
@@ -864,7 +861,7 @@ drug_cell_fc <- do.call(rbind, drug_cell_fc)
 
 #save results
 
-setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
 
 write.csv(drug_cell_fc, "drug_cell_fc.csv")
 
@@ -874,7 +871,7 @@ write.csv(drug_cell_ED50,"drug_cell_ED50.csv")
 
 #read results
 
-setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
 
 drug_cell_fc <- read.csv("drug_cell_fc.csv")
 
@@ -891,12 +888,14 @@ lapply(unique(drug_cell_fc$idx), function(idx){
   return(sub_data)
 }) -> tmp
 
-setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
 
 library(ggplot2)
 
 lapply(tmp, function(sub_data){
-  #sub_data <- tmp[[737]]
+  #sub_data <- tmp[[600]]
+  
+  #FIXME report raw values and not binary
   
   #compare ED50 for log2fc and GR24
   sub_fc <- df[unique(sub_data$idx),]
@@ -939,7 +938,7 @@ colnames(EC50_statistics) <- c("pvalue",'GR_eff',"EC50_FC", "PASS")
 
 EC50_statistics$association_index = 1:dim(df)[1]
 
-setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
 
 write.csv(EC50_statistics, "statistics_EC50.csv")
 
@@ -980,7 +979,7 @@ for(x in 1:length(models_GR24)){
 
 #read EC50 results
 
-setwd(paste(path_fig, "GI50_associations", sep ="\\"))
+setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
 
 drug_cell_fc <- read.csv("drug_cell_fc.csv")
 
@@ -1006,44 +1005,43 @@ write.csv(df, file = 'metabolite_GR24_association_survivingCI_ionLabel.csv')
 
 df$association_index = 1:dim(df)[1]
 
-setwd(path_data_file)
 df$drugion <- paste(df$drug, df$ionIndex)
+
+setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
+
 basal_associations <- read.csv('basal_association.csv')
 
 basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
 
 df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
 
-
 #combine GR50 association
 
 df <- merge(df, EC50_statistics, by= "association_index")
 
 df$GR24_link <- ifelse(df$slope.x<0, "Sensitivity", "Resistant")
-df$basal_change <- ifelse(df$slope.y<1, "synthesis", "consumption")
+df$basal_change <- ifelse(df$slope.y<1, "Consumption", "Synthesis")
 df$GR_independence <- df$PASS
 
 #save full with all 3 metrics
 
 setwd(path_data_file)
-setwd("..")
 write.csv(df, "drug_metabolite_associations.csv")
 
 #generate statistics as results
 
 stats_associations <-  xtabs(~basal_change+GR24_link+GR_independence, df)
 
-
 # plot associations by drug, heatmap by metrics ---------------------------
 
 #import results
 
 setwd(path_data_file)
-setwd("..")
+
 df <- read.csv("drug_metabolite_associations.csv")
 
 lapply(unique(df$drug), function(drug){
-  
+  #drug = "BPTES"
   tmp <- df[df$drug==drug,]
   
   #subset ion and the tree metrics
