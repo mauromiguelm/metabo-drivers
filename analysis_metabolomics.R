@@ -16,6 +16,7 @@ library(ggplot2)
 library(parallel)
 library(proxy)
 library(KEGGREST)
+library(viridis)
 #import drug sensitity metrics
 
 setwd(path_data_file)
@@ -204,7 +205,7 @@ lapply(unique(metab_fcs$drug), function(drug_idx){
 
 #map concentrations
 
-setwd(paste0(path_fig,"\\tdsr"))
+setwd(paste0(path_data_file,"\\tdsr"))
 
 metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
 
@@ -909,7 +910,7 @@ lapply(tmp, function(sub_data){
   stat_EC50 <- wilcox.test(value~name, data_merged,exact=F)$p.value
   
   mean_data <- aggregate(value ~ name, data = data_merged, FUN= "median" )
-  
+    
   GR_eff <- mean_data[mean_data$name=='GR24',2]<mean_data[mean_data$name=='log2fc',2]
   #GR_diff <- abs(mean_data[mean_data$name=='GR24',2]-mean_data[mean_data$name=='log2fc',2])
   
@@ -995,7 +996,11 @@ df <- read.csv('metabolite_GR24_association_survivingCI.csv')
 
 df$color <- ifelse(df$slope<0, "Negative", "Positive")
 
+colnames(df)[5:8] <- paste("DMA", colnames(df)[5:8], sep = "_") 
+
 tmp_ions <- ions[,c("ionIndex",'mzLabel','idKEGG','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
+
+tmp_ions[tmp_ions$mzLabel == 'mz133.0145',"name"] <- "Malate"
 
 df <- merge(df, tmp_ions, by='ionIndex')
 
@@ -1013,15 +1018,19 @@ basal_associations <- read.csv('basal_association.csv')
 
 basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
 
-df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
+colnames(basal_associations)[4:7] <- paste("basal", colnames(basal_associations)[4:7], sep = "_")
+
+df <- merge(df, basal_associations[,c('drugion', 'basal_slope','basal_pvalue',"basal_r2", "basal_adj.r2")], by='drugion')
 
 #combine GR50 association
 
+colnames(EC50_statistics)[2:5] <- c("EC50_pvalue", "EC50_GR_eff",  "EC50_FC", "EC50_PASS")
+
 df <- merge(df, EC50_statistics, by= "association_index")
 
-df$GR24_link <- ifelse(df$slope.x<0, "Sensitivity", "Resistant")
-df$basal_change <- ifelse(df$slope.y<1, "Consumption", "Synthesis")
-df$GR_independence <- df$PASS
+df$DMA <- ifelse(df$DMA_slope<0, "Sensitivity", "Resistant")
+df$Basal_effect <- ifelse(df$basal_slope<1, "Consumption", "Synthesis")
+df$GR_independence <- df$EC50_PASS
 
 #save full with all 3 metrics
 
@@ -1030,7 +1039,7 @@ write.csv(df, "drug_metabolite_associations.csv")
 
 #generate statistics as results
 
-stats_associations <-  xtabs(~basal_change+GR24_link+GR_independence, df)
+stats_associations <-  xtabs(~Basal_effect+GR_independence+DMA, df)
 
 # plot associations by drug, heatmap by metrics ---------------------------
 
@@ -1040,30 +1049,72 @@ setwd(path_data_file)
 
 df <- read.csv("drug_metabolite_associations.csv")
 
+substrRight <- function(x, n){
+  
+  if(nchar(x)>n){
+    
+    #x = substr(x, nchar(x)-n+1, nchar(x))
+    
+    #paste0("/",x)
+    
+    return("")
+    
+  }else{
+    return(x)
+    
+  }
+  
+}
+
 lapply(unique(df$drug), function(drug){
   #drug = "BPTES"
   tmp <- df[df$drug==drug,]
   
+  n_interactions <- length(unique(tmp$ionIndex))
+  
   #subset ion and the tree metrics
   
-  tmp <- tmp[,c("name","GR_independence","slope.y","slope.x")]
+  tmp <- tmp[,c("name","mzLabel","EC50_FC","DMA_slope","basal_slope")]
   
-  colnames(tmp) <- c("Metabolite","GR independence", "Basal effect", "Growth phenotype")
+  tmp$name <- as.character(sapply(tmp$name, substrRight, 25))
+  
+  tmp$name <- paste(tmp$name, paste0("(",tmp$mzLabel,")"), sep = " ")
+  
+  tmp$mzLabel <- NULL
+  
+  colnames(tmp) <- c("Metabolite","log2(GR ind)", "DMA", "Basal effect")
+  
+  tmp$`log2(GR ind)` <- log2(tmp$`log2(GR ind)`)
   
   tmp <- tidyr::pivot_longer(tmp,-Metabolite, names_to = "metric")
   
-  tmp$metric <- factor(tmp$metric,levels = c("GR independence", "Basal effect", "Growth phenotype"))
+  tmp$metric <- factor(tmp$metric,levels = c("log2(GR ind)", "Basal effect", "DMA"))
   
   tmp$color <- NA
   
-  tmp$color <- ifelse(tmp$metric=="Growth phenotype" & tmp$value<0, "#FF0000", tmp$color)
-  tmp$color <- ifelse(tmp$metric=="Growth phenotype" & tmp$value>0, "green4", tmp$color)
+  GRI <- tmp[which(tmp$metric=="log2(GR ind)"),'value'][[1]]
+  
+  
+  tmp$color <- ifelse(tmp$metric=="DMA" & tmp$value<0, "#FF0000", tmp$color)
+  tmp$color <- ifelse(tmp$metric=="DMA" & tmp$value>0, "green4", tmp$color)
   tmp$color <- ifelse(tmp$metric=="Basal effect" & tmp$value<1, "blue", tmp$color)
   tmp$color <- ifelse(tmp$metric=="Basal effect" & tmp$value>1, "red", tmp$color)
-  tmp$color <- ifelse(tmp$metric=="GR independence" & tmp$value==0, viridis::viridis(2)[1], tmp$color)
-  tmp$color <- ifelse(tmp$metric=="GR independence" & tmp$value==1, viridis::viridis(2)[2], tmp$color)
+  tmp[which(tmp$metric=="log2(GR ind)")[order(GRI)],'color'] <-  viridis(n_interactions,direction = -1)
+
+
+  GR_ind_cols <- tmp[tmp$metric=="log2(GR ind)",]$color
+  GRind_values <- tmp[tmp$metric=="log2(GR ind)",]$value
   
-  tmp$value <- ifelse(tmp$metric=="GR independence", 1,tmp$value)
+  GR_ind_cols <- GR_ind_cols[order(GRind_values)]
+  GRind_values <- GRind_values[order(GRind_values)]
+  
+  GR_ind_cols <- GR_ind_cols[unique(round(c(1,seq(1, n_interactions, length.out = 7), n_interactions)))]
+  GRind_values <- GRind_values[unique(round(c(1,seq(1, n_interactions, length.out = 7), n_interactions)))]
+  
+  
+  GRind_values <- round(GRind_values, 2)
+  
+  tmp$value <- ifelse(tmp$metric=="log2(GR ind)", 2,tmp$value)
   
   setwd(paste0(path_fig, "\\association_heatmap_by_drug"))
   ggplot(tmp, aes(metric, Metabolite))+
@@ -1083,8 +1134,16 @@ lapply(unique(df$drug), function(drug){
   ggsave(paste(drug, "h0.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.4,width = 7, limitsize = F)
   ggsave(paste(drug, "h2.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.5,width = 7, limitsize = F)
   ggsave(paste(drug, "h3.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.3,width = 9, limitsize = F)
+  
+  #create a legend for GR independence
+  
+  
+  pdf(paste(drug, "legend.pdf")) 
+  plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
+  legend(x = 0, y = 1, fill = GR_ind_cols,col = GR_ind_cols , legend = GRind_values, title = "log2(GR independence)")
+  dev.off()
 
-})
+  })
 
 # plot top ranked interesting associations -----------------------
 
@@ -1121,7 +1180,7 @@ library(tidyr)
 
 #prep data for individual drug metab assoation
 
-df_sankey <- df[,c('drug','name','slope')]
+df_sankey <- df[,c('drug','name','DMA_slope')]
 
 names(df_sankey) <- c("name", 'year1','value')
 
