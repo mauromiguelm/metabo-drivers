@@ -3,7 +3,7 @@
 # load packages and definitions -------------------------------------------
 
 path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data'
-path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures\\metabolomics'
+path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_clean\\metabolomics'
 path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
 library(openxlsx)
@@ -67,9 +67,9 @@ source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_
 
 setwd(path_metabolomics_in)
 
-dataContent<- h5ls("metabolomics_raw.h5")
+dataContent<- h5ls("MM4_Mean mean_norm_DATA.h5")
 
-metadata <- rhdf5::h5read(file = "metabolomics_raw.h5", 'samples/name')
+metadata <- rhdf5::h5read(file = "MM4_Mean mean_norm_DATA.h5", 'samples/name')
 
 metadata <- strsplit(metadata, "_")
 
