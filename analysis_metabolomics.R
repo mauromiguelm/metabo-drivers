@@ -17,6 +17,25 @@ library(parallel)
 library(proxy)
 library(KEGGREST)
 library(viridis)
+
+substrRight <- function(x, n){
+  
+  if(nchar(x)>n){
+    
+    #x = substr(x, nchar(x)-n+1, nchar(x))
+    
+    #paste0("/",x)
+    
+    return("")
+    
+  }else{
+    return(x)
+    
+  }
+  
+}
+
+
 #import drug sensitity metrics
 
 setwd(path_data_file)
@@ -633,6 +652,11 @@ df%>% group_by(drug) %>% summarise(association_count = n()) %>%
   xlab('Drug')+
   ylab('Number of associations')
 
+df$X <- seq(1,nrow(df))
+
+rownames(df) <- NULL
+
+colnames(df)[1] <- "idx"
 
 #save associations
 
@@ -719,6 +743,8 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 df <- read.csv('metabolite_GR24_association_survivingCI.csv')
 
+df$X <- NULL
+
 #import full GR24 data
 
 setwd(paste0(path_data_file))
@@ -803,7 +829,7 @@ drug_cell_ED50 <- do.call(rbind, drug_cell_ED50)
 drug_cell_fc <- list()
 models_log2fc <- list()
 
-for(idx in 1:dim(df)[1]){
+for(idx in df$idx){
   print(idx)
   #idx = 492 #hbp
   #idx = 138 orotate
@@ -889,6 +915,7 @@ lapply(unique(drug_cell_fc$idx), function(idx){
   return(sub_data)
 }) -> tmp
 
+
 setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
 
 library(ggplot2)
@@ -896,48 +923,42 @@ library(ggplot2)
 lapply(tmp, function(sub_data){
   #sub_data <- tmp[[600]]
   
-  #FIXME report raw values and not binary
-  
   #compare ED50 for log2fc and GR24
-  sub_fc <- df[unique(sub_data$idx),]
+  sub_fc <- df[which(df$idx==unique(sub_data$idx)),]
   print(unique(sub_data$idx))
   sub_drug <- subset(drug_cell_ED50, drug == unique(sub_fc$drug))
+  
+  
   
   data_merged <- merge(sub_drug[,c("cell","ED50")], sub_data[,c("cell","ED50")], by = "cell")
   colnames(data_merged) <- c('cell',"GR24", "log2fc")
   data_merged <- tidyr::pivot_longer(data_merged, -cell)
   
-  stat_EC50 <- wilcox.test(value~name, data_merged,exact=F)$p.value
-  
   mean_data <- aggregate(value ~ name, data = data_merged, FUN= "median" )
-    
-  GR_eff <- mean_data[mean_data$name=='GR24',2]<mean_data[mean_data$name=='log2fc',2]
-  #GR_diff <- abs(mean_data[mean_data$name=='GR24',2]-mean_data[mean_data$name=='log2fc',2])
   
   GR_diff = mean_data[mean_data$name=='GR24',2]/mean_data[mean_data$name=='log2fc',2]
+  
   metab_name <- gsub(":", "-",sub_fc$name)
   metab_name <- gsub("/", "-",metab_name)
-  PASS = (stat_EC50<0.05 & GR_diff>2)
-  if(stat_EC50<0.05 & GR_diff>2){
+  
+  if(abs(GR_diff)>1.5){
     ggplot(data_merged, aes(name, value, fill = name))+
       geom_boxplot()+
       # geom_point() is used to plot data points on boxplot
       geom_jitter(aes(fill=name,group=cell),size=3,shape=21)+
       ylab('ED50')+
-      ggtitle(paste(sub_fc$drug, sub_fc$name, GR_eff, sep = "_"))-> plot
+      ggtitle(paste(sub_fc$drug, sub_fc$name, sep = "_"))-> plot
     ggsave(filename = paste(sub_fc$drug,metab_name,".png", sep ="_"), plot = plot)
     
   }
   
-  return(data.frame(stat_EC50,GR_eff,GR_diff, PASS))
+  return(data.frame(unique(sub_data$idx),GR_diff))
   
 }) -> tmp
 
 EC50_statistics <- data.frame(do.call(rbind,tmp))
 
-colnames(EC50_statistics) <- c("pvalue",'GR_eff',"EC50_FC", "PASS")
-
-EC50_statistics$association_index = 1:dim(df)[1]
+colnames(EC50_statistics) <- c("association_index","EC50_FC")
 
 setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
 
@@ -988,15 +1009,19 @@ drug_cell_ED50 <- read.csv("drug_cell_ED50.csv")
 
 EC50_statistics <- read.csv("statistics_EC50.csv")
 
+EC50_statistics$X <- NULL
+
 #select the ions that survived permutation thresohld
 
 setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 df <- read.csv('metabolite_GR24_association_survivingCI.csv')
 
+df$X <- NULL
+
 df$color <- ifelse(df$slope<0, "Negative", "Positive")
 
-colnames(df)[5:8] <- paste("DMA", colnames(df)[5:8], sep = "_") 
+colnames(df)[4:8] <- paste("DMA", colnames(df)[4:8], sep = "_") 
 
 tmp_ions <- ions[,c("ionIndex",'mzLabel','idKEGG','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
 
@@ -1008,7 +1033,7 @@ write.csv(df, file = 'metabolite_GR24_association_survivingCI_ionLabel.csv')
 
 # combine log2fc/GI50 association with basal/treated metabolome association
 
-df$association_index = 1:dim(df)[1]
+df$association_index = df$idx
 
 df$drugion <- paste(df$drug, df$ionIndex)
 
@@ -1016,30 +1041,41 @@ setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 
 basal_associations <- read.csv('basal_association.csv')
 
+basal_associations$X <- NULL
+
 basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
 
-colnames(basal_associations)[4:7] <- paste("basal", colnames(basal_associations)[4:7], sep = "_")
+colnames(basal_associations)[3:6] <- paste("basal", colnames(basal_associations)[3:6], sep = "_")
 
 df <- merge(df, basal_associations[,c('drugion', 'basal_slope','basal_pvalue',"basal_r2", "basal_adj.r2")], by='drugion')
 
 #combine GR50 association
 
-colnames(EC50_statistics)[2:5] <- c("EC50_pvalue", "EC50_GR_eff",  "EC50_FC", "EC50_PASS")
+colnames(EC50_statistics)[2] <- c("EC50_FC")
 
 df <- merge(df, EC50_statistics, by= "association_index")
 
 df$DMA <- ifelse(df$DMA_slope<0, "Sensitivity", "Resistant")
 df$Basal_effect <- ifelse(df$basal_slope<1, "Consumption", "Synthesis")
-df$GR_independence <- df$EC50_PASS
+df$GR_independence <- ifelse(df$EC50_FC >1, T, F)
 
 #save full with all 3 metrics
 
 setwd(path_data_file)
 write.csv(df, "drug_metabolite_associations.csv")
 
-#generate statistics as results
+#generate statistics as results per group
 
-stats_associations <-  xtabs(~Basal_effect+GR_independence+DMA, df)
+setwd(path_data_file)
+df <- read.csv("drug_metabolite_associations.csv")
+
+
+stats_associations <-  xtabs(~Basal_effect+DMA+GR_independence, df)
+
+#generate number of associations per ion
+
+stats_count_per_ion <- df %>% group_by(name) %>% summarize(count = n())
+
 
 # plot associations by drug, heatmap by metrics ---------------------------
 
@@ -1048,31 +1084,16 @@ stats_associations <-  xtabs(~Basal_effect+GR_independence+DMA, df)
 setwd(path_data_file)
 
 df <- read.csv("drug_metabolite_associations.csv")
-
-substrRight <- function(x, n){
-  
-  if(nchar(x)>n){
-    
-    #x = substr(x, nchar(x)-n+1, nchar(x))
-    
-    #paste0("/",x)
-    
-    return("")
-    
-  }else{
-    return(x)
-    
-  }
-  
-}
+df$X = NULL
 
 lapply(unique(df$drug), function(drug){
-  #drug = "BPTES"
+  #drug = "Decitabine"
   tmp <- df[df$drug==drug,]
   
-  n_interactions <- length(unique(tmp$ionIndex))
+  n_interactions <- length(unique(tmp$name))
   
   #subset ion and the tree metrics
+  
   
   tmp <- tmp[,c("name","mzLabel","EC50_FC","DMA_slope","basal_slope")]
   
@@ -1086,33 +1107,29 @@ lapply(unique(df$drug), function(drug){
   
   tmp$`log2(GR ind)` <- log2(tmp$`log2(GR ind)`)
   
+  #limit GRI at 4
+  
+  tmp$`log2(GR ind)` <- ifelse(tmp$`log2(GR ind)`>4, 4, tmp$`log2(GR ind)`)
+  
+  tmp$`log2(GR ind)` <- ifelse(tmp$`log2(GR ind)`<c(-4), c(-4), tmp$`log2(GR ind)`)
   tmp <- tidyr::pivot_longer(tmp,-Metabolite, names_to = "metric")
   
   tmp$metric <- factor(tmp$metric,levels = c("log2(GR ind)", "Basal effect", "DMA"))
   
-  tmp$color <- NA
-  
   GRI <- tmp[which(tmp$metric=="log2(GR ind)"),'value'][[1]]
   
+  GRI_max <- max(abs(GRI))
   
+  GRI_colmap = colorRamp2(c(-GRI_max, 0, GRI_max), c("darkgreen", "grey", viridis(100)[100]))
+  
+  GRI_col <- GRI_colmap(GRI)
+  
+  tmp$color <- NA
   tmp$color <- ifelse(tmp$metric=="DMA" & tmp$value<0, "#FF0000", tmp$color)
   tmp$color <- ifelse(tmp$metric=="DMA" & tmp$value>0, "green4", tmp$color)
   tmp$color <- ifelse(tmp$metric=="Basal effect" & tmp$value<1, "blue", tmp$color)
   tmp$color <- ifelse(tmp$metric=="Basal effect" & tmp$value>1, "red", tmp$color)
-  tmp[which(tmp$metric=="log2(GR ind)")[order(GRI)],'color'] <-  viridis(n_interactions,direction = -1)
-
-
-  GR_ind_cols <- tmp[tmp$metric=="log2(GR ind)",]$color
-  GRind_values <- tmp[tmp$metric=="log2(GR ind)",]$value
-  
-  GR_ind_cols <- GR_ind_cols[order(GRind_values)]
-  GRind_values <- GRind_values[order(GRind_values)]
-  
-  GR_ind_cols <- GR_ind_cols[unique(round(c(1,seq(1, n_interactions, length.out = 7), n_interactions)))]
-  GRind_values <- GRind_values[unique(round(c(1,seq(1, n_interactions, length.out = 7), n_interactions)))]
-  
-  
-  GRind_values <- round(GRind_values, 2)
+  tmp[which(tmp$metric=="log2(GR ind)"),'color'] <- GRI_colmap(tmp[which(tmp$metric=="log2(GR ind)"),'value'][[1]])
   
   tmp$value <- ifelse(tmp$metric=="log2(GR ind)", 2,tmp$value)
   
@@ -1137,16 +1154,21 @@ lapply(unique(df$drug), function(drug){
   
   #create a legend for GR independence
   
+  GRI <- seq(c(-GRI_max), GRI_max, length.out = 7)
+  
+  GRI_col <- GRI_colmap(GRI)
+
+  GRI <- round(GRI,0)
   
   pdf(paste(drug, "legend.pdf")) 
   plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
-  legend(x = 0, y = 1, fill = GR_ind_cols,col = GR_ind_cols , legend = GRind_values, title = "log2(GR independence)")
+  legend(x = 0, y = 1, fill = GRI_col, legend = GRI, title = "log2(GR independence)")
   dev.off()
 
   })
 
-# plot top ranked interesting associations -----------------------
 
+# plot top ranked interesting associations -----------------------
 
 #number of associations per metabolite with diferent drugs (plot)
 
@@ -1155,17 +1177,17 @@ tmp <- df %>% group_by(ionIndex) %>% dplyr::summarise(count_metab = n())
 setwd(path_fig)
 
 ggplot(tmp, aes(x=count_metab, fill = factor(count_metab)))+
-  geom_bar()+
+  geom_point(stat ="count", size = 4)+
   scale_fill_manual("legend", values = viridis::rocket(15))+
   theme_bw()+
   ylab("Number of metabolites")+
   xlab("Number of drugs")+
-  theme(axis.text.x = element_text(size = 25),axis.text.y = element_text(size = 25),
+  theme(axis.text.x = element_text(size = 20),axis.text.y = element_text(size = 20),
         axis.ticks = element_line(size = 1),axis.ticks.length = unit(.25, "cm"),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())+
   scale_y_continuous(limits = c(0,80), breaks = seq(0,80,20))+
-  scale_x_continuous(limits = c(0,20), breaks = seq(0,16,4))+
+  scale_x_continuous(limits = c(0,12), breaks = seq(0,12,4))+
   theme(legend.position = "none") -> plt
 
 ggsave("number_metabs_associated_with_number_drugs.pdf",plt,device = "pdf",width=5, height=4,scale = 0.9)
@@ -1306,30 +1328,47 @@ ggplot(tmp, aes(y= name, x= year1, fill = count))+
 
 #clirclize plot of top 10 associations ---------------------------------
 
-df$drugion <- paste(df$drug, df$ionIndex)
-
-df <- df %>% group_by(drug) %>% dplyr::arrange(abs(slope)) %>% dplyr::slice_tail(n=10)
-
-df <- df %>% group_by(drug) %>%dplyr::arrange(abs(slope)) %>%  dplyr::mutate(slope_norm = c(10:1)[1:n()])
-
-# combine log2fc/GI50 association with basal/treated metabolome association
-
-#setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
 setwd(path_data_file)
-basal_associations <- read.csv('basal_association.csv')
+df <- read.csv("drug_metabolite_associations.csv")
 
-basal_associations$drugion <- paste(basal_associations$drug, basal_associations$ionIndex)
+df <- df %>% group_by(drug) %>% dplyr::arrange(abs(DMA_slope)) %>% dplyr::slice_tail(n=10)
 
-df <- merge(df, basal_associations[,c('drugion', 'slope','pvalue')], by='drugion')
+df <- df %>% group_by(drug) %>%dplyr::arrange(abs(DMA_slope)) %>%  dplyr::mutate(slope_norm = c(10:1)[1:n()])
 
-df$slope.y <- as.numeric(df$slope.y)
+df$basal_slope <- ifelse(df$basal_slope >=2,2, df$basal_slope)
+df$basal_slope <- ifelse(df$basal_slope <=c(0),-0, df$basal_slope)
 
-df$slope.y <- ifelse(df$slope.y >=5,2, df$slope.y)
+df$DMA_slope <- ifelse(df$DMA_slope >=2,2, df$DMA_slope)
+df$DMA_slope <- ifelse(df$DMA_slope <=c(-2),-2, df$DMA_slope)
+
+
+df$name <- as.character(sapply(df$name, substrRight, 25))
+
+df$name <- paste(df$name, paste0("(",df$mzLabel,")"), sep = " ")
+
+df$EC50_FC <- log2(df$EC50_FC)
+
+df$EC50_FC <- ifelse(df$EC50_FC >4,4, df$EC50_FC)
+df$EC50_FC <- ifelse(df$EC50_FC <c(-4),-4, df$EC50_FC)
+
+# merge MoA 
+
+setwd(path_data_file)
+
+drug_metadata <- read.csv("drug_metadata_moa.csv")
+
+colnames(drug_metadata)[5] <- 'drug'
+
+df <- merge(df, drug_metadata[,c('drug', 'Class')], by = 'drug')
+
+#start circos plot
+
+
 
 library(circlize)
 
 df$x=0
-df$color <- ifelse(df$slope.x<0, "#FF0000", "green4")
+df$color <- ifelse(df$DMA_slope<0, "#FF0000", "green4")
 #circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
 setwd(path_fig)
 
@@ -1341,7 +1380,7 @@ circos.par("track.height" = 0.05,canvas.xlim = c(-(1+x1), 1+x2), canvas.ylim = c
            start.degree = 93)
 circos.initialize(df$drug, x = (df$slope_norm))
 
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$DMA_slope,
              panel.fun = function(x, y) {
                #circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
@@ -1349,53 +1388,60 @@ circos.track(df$drug, y =df$slope.x,
 circos.trackText(sectors = df$drug,x = df$slope_norm, y= df$x, labels = df$name,
                  cex= 0.6,track.index = 1,facing = 'clockwise',col = df$color,adj =  c(0),niceFacing = T)
 
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$DMA_slope,
              panel.fun = function(x, y) {
                #circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
+circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x,cex = abs(df$DMA_slope)*0.5, col = df$color,pch = 16)
 
-circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x,cex = abs(df$slope.x)*0.15, col = df$color,pch = 16)
-
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$DMA_slope,
              panel.fun = function(x, y) {
                #circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
-col2 = colorRamp2(c(min(df$slope.y), 1, max(df$slope.y)), c("blue", "grey", "red"))
+col2 = colorRamp2(c(min(df$basal_slope), 1, max(df$basal_slope)), c("blue", "grey", "red"))
 
 
-df$color2 <- col2(df$slope.y)
+df$color2 <- col2(df$basal_slope)
 circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x,col = df$color2 ,pch = 16)
 
 
 # add EC50 analysis 
 
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$DMA_slope,
              panel.fun = function(x, y) {
                #circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
-df$color3 <- viridis::viridis(2)[df$PASS+1]
+
+GRI_max <- max(abs(df$EC50_FC))
+
+col3 = colorRamp2(c(-GRI_max, 0, GRI_max), c("darkgreen", "grey", viridis(100)[100]))
+
+df$color3 <- col3(df$EC50_FC)
 
 circos.trackPoints(sectors = df$drug,x = df$slope_norm, y= df$x,col = df$color3 ,pch = 16)
 
-# add drug name
+# add drug MoA
 
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$DMA_slope,
              panel.fun = function(x, y) {
                #circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
+color4 <- RColorBrewer::brewer.pal(n = 9, name = 'Paired')
+moa <- unique(df$Class)
 
-color = viridis::viridis(nrow(df))
+df$color4 <- color4[match(df$Class, moa)]
+
 i=1
 for(x in (df$drug)){
-  highlight.sector(track.index = 5,col = color[i],sector.index = x)
+  highlight.sector(track.index = 5,col = df$color4[i],sector.index = x)
   i=i+1
 }
 
-circos.track(df$drug, y =df$slope.x,
+circos.track(df$drug, y =df$DMA_slope,
              panel.fun = function(x, y) {
                circos.text(CELL_META$xcenter,track.index = 6,
                            CELL_META$cell.ylim[2] - mm_y(13),
@@ -1405,15 +1451,36 @@ circos.track(df$drug, y =df$slope.x,
 dev.off()
 circos.clear()
 
+
+
+col3 = colorRamp2(c(-GRI_max, 0, GRI_max), c("darkgreen", "grey", viridis(100)[100]))
+
+df$color3 <- col3(df$EC50_FC)
+
+
+pdf(paste("circle-legend-GRI.pdf")) 
+plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
+legend(x = 0, y = 1, fill = col3(seq(-GRI_max,GRI_max,1)),legend = seq(-GRI_max,GRI_max,1), title = "log2(GR independence)")
+dev.off()
+
+
+
+
+pdf(paste("circle-legend-basal.pdf")) 
+plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
+legend(x = 0, y = 1, fill = col2(seq(0,2,0.25)),legend = seq(0,2,0.25), title = "Basal effect")
+dev.off()
+
+
+
 # plot summary of ED50
 
 
-df$PASS <-  as.numeric(df$pvalue.y<0.05 & df$EC50_FC>2)
+df$PASS <-  ifelse(df$EC50_FC>0,T,F)
 
 EC50_stats_by_drug <- do.call(data.frame, aggregate(PASS~drug, df,  FUN = function(x) c(count = sum(x), total = length(x))))
 
 EC50_stats_by_drug$PASS.percentage <- EC50_stats_by_drug$PASS.count/EC50_stats_by_drug$PASS.total
-mail
 ggplot(EC50_stats_by_drug, aes(x=reorder(drug, PASS.percentage),y=PASS.percentage))+
   geom_bar(stat = 'identity')+
   theme(axis.text.x = element_text(angle = 45,hjust = 1, vjust = 1)) -> plt
