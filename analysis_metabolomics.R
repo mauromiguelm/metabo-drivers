@@ -2,10 +2,10 @@
 
 # load packages and definitions -------------------------------------------
 
-path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data_mean'
+path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data_mean_hsa'
 #path_data_file = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
 #path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
-path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean\\metabolomics'
+path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean_hsa\\metabolomics'
 path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
 source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\plate_converter.R")
@@ -41,8 +41,14 @@ substrRight <- function(x, n){
 setwd(path_data_file)
 
 data_GR50 <- read.csv("outcomes_growth_inhibition50.csv")
-GR24_outliers_high <- read.csv('GR24_outliers_high.csv')
-GR24_outliers_low <- read.csv('GR24_outliers_low.csv')
+#GR24_outliers_high <- read.csv('GR24_outliers_high.csv')
+#GR24_outliers_low <- read.csv('GR24_outliers_low.csv')
+
+
+#import kegg hsa compounds
+
+kegg_hsa_cpds = read.csv("kegg_hsa_cpds.csv")
+
 
 #import metabolomics
 
@@ -55,6 +61,24 @@ data<- rhdf5::h5read(file = "MM4_Mean mean_norm_DATA.h5", '/data')
 ions <- rhdf5::h5read(file = "MM4_Mean mean_norm_DATA.h5", '/annotation')
 
 ions <- data.frame(ions)
+
+#filter hsa ions 
+
+ions <- ions %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n()) #get deprotonated
+
+lapply(ions$idKEGG, function(x){
+  #x = ions$idKEGG[200]
+  kegg_id <- strsplit(x, " ")[[1]]
+  
+  any(kegg_id %in% kegg_hsa_cpds$x)
+  
+}) -> is_hsa_kegg
+
+ions <- ions[unlist(is_hsa_kegg),]
+
+data <- data[ions$ionIndex,]
+
+ions$ionIndex <- 1:nrow(ions)
 
 #import cleaned metadata
 
@@ -435,10 +459,10 @@ metab_fcs <- do.call(rbind, metab_fcs)
 #distribute these iterations across all ions
 
 bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, nboot=100000){
-  #drug_idx = 'Oxfenicine'
+  #drug_idx = 'Methotrexate'
 
   #distribute nboot across all ions
-  print(paste('drug:',paste(drug_idx),'is not running'))
+  print(paste('drug:',paste(drug_idx),'is now running'))
   tmp <- subset(fc_data, drug == drug_idx)
 
   tmp$cell_conc <- paste(tmp$cell_line, tmp$conc,sep = "_")
@@ -473,14 +497,12 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
 
     #create permutations
 
-    perm_df <- t(replicate(iter_nr, sample(length(unique(tmp$cell_conc)), replace = FALSE, prob = NULL)))
+    perm_df <- t(replicate(max(iter_per_ion), sample(length(unique(tmp$cell_conc)), replace = FALSE, prob = NULL)))
 
     #for every ion in each drug associate with GR50
 
-
-
     for(ion_idx in 1:nions){
-      #ion_idx=1
+      #ion_idx=3
       print(paste(drug_idx,ion_idx))
 
       tmp_ion <- subset(tmp, ionIndex == ion_idx)
@@ -488,6 +510,7 @@ bootstrap_association_ion_drug_effect <- function(drug_idx,fc_data,pheno_data, n
       count_iter <- 0
 
       while(count_iter < iter_per_ion[ion_idx]){
+        print(count_iter)
 
         slope <- lm(log2fc~log10(tmp_ion$percent_change_GR[perm_df[count_iter+1,]]), tmp_ion)
 
@@ -666,7 +689,7 @@ write.csv(df, 'metabolite_GR24_association_survivingCI.csv')
 
 # baseline vs drug treated ion compairison --------------------------------
 
-lapply(unique(ions$ionIndex), function(ionidx){
+lapply(1:nrow(ions), function(ionidx){
   #ionidx = 816
   print(ionidx)
   #iterate over ions and claculate association betwen basal and drug
@@ -1574,6 +1597,40 @@ comb_data$perfect_fit <- comb_data$mean_ion.x
     theme_bw()+
     geom_abline(slope = 1, intercept = 0, col = 'red',linetype = "dashed")+
     geom_smooth(method='lm', formula= y~x) -> plt)
+
+
+# plot summary all associations in one plot -----------------------------
+
+
+library(ggrepel)
+
+
+df$drugmetab <- paste(df$drug, df$name)
+
+
+ggplot(df, aes(x = rank(DMA_slope) ,y=DMA_slope, label = drugmetab))+
+  geom_point()+
+  geom_text_repel(size = 3)
+
+
+
+ggplot(df, aes(x = rank(basal_slope) ,y=basal_slope, label = drugmetab))+
+  geom_point()+
+  geom_text_repel(size = 3)
+
+
+
+ggplot(df, aes(x = rank(DMA_slope) ,y=DMA_slope, label = name))+
+  geom_point()+
+  geom_text_repel(size = 3)+
+  facet_grid(~drug)
+
+
+
+ggplot(df, aes(x = rank(basal_slope) ,y=basal_slope, label = name))+
+  geom_point()+
+  geom_text_repel(size = 3)+
+  facet_grid(~drug)
 
 
 
