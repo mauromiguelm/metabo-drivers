@@ -1,6 +1,7 @@
 ### IMPORT PACKAGES ###
 setwd('C:\\Users\\masierom\\polybox\\Data')
-path_fig = path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean'
+path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean'
+path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data_mean'
 library(ggplot2)
 library(tidyr)
 library(readxl)
@@ -44,7 +45,9 @@ AZ_metab.intensities1 = data.frame(AZ_metab$intensities1)
 
 rm(read_excel_allsheets)
 
-# ### ORGANIZE DATA ### ---------------------------------------------------
+
+# organize data -----------------------------------------------------------
+
 
 # remove duplicated CAS Numbers in NSC_to_CAS, keep 1 NSC to 1 CAS, as it should be
 
@@ -259,6 +262,7 @@ rm(k, i, tmp_getDrug, tmp_getDrug_2, tmp_store_DrugBankID_CAS, tmp_store_DrugBan
 
 rownames(kEGG_Cancer_drug_set) <- NULL
 
+
 #fix drugs IDs in kegg metadata  
 
 kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == 'Nilotinib', 'CAS'] = '641571-10-0'
@@ -399,16 +403,32 @@ drug_data$Kegg_metadata <- kEGG_Cancer_drug_set
 drug_data$NCI60_GI50_cancer <- drug_sensitivity_NCI_cancer
 drug_data$exp_drugs <- experimental_drugs
 
+
+
+# get hsa kegg cpds ----------------
+
+setwd(path_data_file)
+
+path_map <- KEGGREST::keggList('pathway', 'hsa')[1:84]
+
+
+lapply(names(path_map), function(idx){
+  
+  #idx = names(path_map)[1]
+  cpd_map <- keggGet(idx)
+  
+  
+  return(names(cpd_map[[1]]$COMPOUND))
+  
+}) -> cpds_human
+
+
+cpds_human <- unique(unlist(cpds_human))
+
+write.csv(cpds_human,file = 'kegg_hsa_cpds.csv')
+
+
+# remove unused data ------------------------------------------------------
+
 rm(drug_sensitivity_NCI, drug_sensitivity_NCI_cancer, kEGG_Cancer_drug_set, experimental_drugs)
-
-
-# #remove "X001..." from "X001...NCIH226_MTX_4_t1" in the sample name.
-# 
-# metab.data$dataset$CELL <- 
-#   
-# lapply(strsplit(as.character(metab.data$dataset$CELL), split = "...", fixed = T), function(x) x[2])
-# 
-# 
-# metab.data$dataset$CELL
-
 
