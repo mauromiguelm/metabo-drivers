@@ -3,8 +3,6 @@
 # load packages and definitions -------------------------------------------
 
 path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data_mean_hsa'
-#path_data_file = "C:\\Users\\mauro\\Documents\\phd_results\\log2fc_full"
-#path_fig = "C:\\Users\\mauro\\Documents\\phd_results"
 path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean_hsa\\metabolomics'
 path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
@@ -17,6 +15,7 @@ library(parallel)
 library(proxy)
 library(KEGGREST)
 library(viridis)
+
 
 substrRight <- function(x, n){
   
@@ -41,9 +40,6 @@ substrRight <- function(x, n){
 setwd(path_data_file)
 
 data_GR50 <- read.csv("outcomes_growth_inhibition50.csv")
-#GR24_outliers_high <- read.csv('GR24_outliers_high.csv')
-#GR24_outliers_low <- read.csv('GR24_outliers_low.csv')
-
 
 #import kegg hsa compounds
 
@@ -62,23 +58,9 @@ ions <- rhdf5::h5read(file = "MM4_Mean mean_norm_DATA.h5", '/annotation')
 
 ions <- data.frame(ions)
 
-#filter hsa ions 
+#filter ions == deprotonated
 
 ions <- ions %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n()) #get deprotonated
-
-lapply(ions$idKEGG, function(x){
-  #x = ions$idKEGG[200]
-  kegg_id <- strsplit(x, " ")[[1]]
-  
-  any(kegg_id %in% kegg_hsa_cpds$x)
-  
-}) -> is_hsa_kegg
-
-ions <- ions[unlist(is_hsa_kegg),]
-
-data <- data[ions$ionIndex,]
-
-ions$ionIndex <- 1:nrow(ions)
 
 #import cleaned metadata
 
@@ -104,6 +86,7 @@ load('DataSource.RData')  # This should be used as mock data.
 #define drugs from controls
 
 drugs_in_screen <- c(unique(metadata$drug)[!(unique(metadata$drug) %in% c("PBS", "DMSO"))])
+
 
 # calculating log2(FCs) for all data and for every drug.  --------
 
