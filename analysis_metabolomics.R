@@ -15,6 +15,7 @@ library(parallel)
 library(proxy)
 library(KEGGREST)
 library(viridis)
+library(circlize)
 
 
 substrRight <- function(x, n){
@@ -34,6 +35,13 @@ substrRight <- function(x, n){
   
 }
 
+#import cell metadata from depmap 
+
+setwd("C:\\Users\\mauro\\Documents\\phd_results\\metadata_cells")
+
+cell_metadata <- read.csv("metadata_cells_depmap.csv")
+
+colnames(cell_metadata)[2] = 'cell'
 
 #import drug sensitity metrics
 
@@ -45,6 +53,13 @@ data_GR50 <- read.csv("outcomes_growth_inhibition50.csv")
 
 kegg_hsa_cpds = read.csv("kegg_hsa_cpds.csv")
 
+#import cell metadata from depmap 
+
+setwd("C:\\Users\\mauro\\Documents\\phd_results\\metadata_cells")
+
+cell_metadata <- read.csv("metadata_cells_depmap.csv")
+
+cell_metadata$cell = cell_metadata$cell_line_display_name
 
 #import metabolomics
 
@@ -61,6 +76,17 @@ ions <- data.frame(ions)
 #filter ions == deprotonated
 
 ions <- ions %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n()) #get deprotonated
+
+ions[ions$mzLabel == 'mz133.0145',"name"] <- "Malate"
+
+# keeg hsa kegg annotations
+
+lapply(ions$idKEGG, function(kegg_ids){
+  kegg_ids = strsplit(x = kegg_ids,split = " ")[[1]]
+  return(any(kegg_ids %in% kegg_hsa_cpds$x))
+}) -> is_kegg
+
+ions$name <-  ifelse(unlist(is_kegg)==T, ions$name,"")
 
 #import cleaned metadata
 
@@ -86,6 +112,57 @@ load('DataSource.RData')  # This should be used as mock data.
 #define drugs from controls
 
 drugs_in_screen <- c(unique(metadata$drug)[!(unique(metadata$drug) %in% c("PBS", "DMSO"))])
+
+
+# plot a metabolomics expected patterns in controls -------------------------------------
+
+# glucose vs. lactate
+
+hexoseP_idx = which(ions$name=='Hexose')
+
+lactate_idx = which(ions$name=='Lactate')
+
+dmso_controls = which(metadata$drug=='DMSO' & metadata$conc=='367')
+
+data_control = data.frame(t(data[c(hexoseP_idx, lactate_idx),dmso_controls]))
+
+colnames(data_control) = c("hexose", 'lactate')
+
+data_control = cbind(metadata[dmso_controls,], data_control)
+
+data_control = data_control[,c('cell',"hexose", 'lactate')] %>% group_by(cell) %>% summarise_all(list(mean, sd))
+
+data_control <- merge(data_control,cell_metadata, by = 'cell')
+
+fit <- lm(scale(lactate_fn1)~scale(hexose_fn1),data_control)
+
+data_control$colors_lineage1 <- factor(data_control$lineage_1,labels = colorspace::diverge_hcl(length(unique(data_control$lineage_1))))
+
+setwd(path_fig)
+
+coefs <- coef(fit)
+b0 <- round(coefs[1], 2)
+b1 <- round(coefs[2],2)
+
+eqn <- bquote(italic(y) == .(b0) + .(b1)*italic(x))
+
+pdf('hexose_lactate_fit.pdf',width = 3,height = 3.5)
+
+plot(scale(lactate_fn1)~scale(hexose_fn1), data=data_control,
+     xlab='',ylab = '',col = data_control$colors_lineage1, pch=19,ylim = c(-2,2.5),xlim = c(-2.5,2))
+
+col_df = data_control%>% group_by(lineage_1) %>% slice(1)
+
+abline(fit,col='black',lty=1,lwd=1)
+
+legend('topleft',title="Lineage", cex=0.1, pch=19,
+       col=col_df$colors_lineage1,
+       legend=col_df$lineage_1, ncol=1)
+
+text(-2.5, 2.0, eqn, pos = 4)
+
+dev.off()
+
 
 
 # calculating log2(FCs) for all data and for every drug.  --------
@@ -1029,11 +1106,7 @@ df$color <- ifelse(df$slope<0, "Negative", "Positive")
 
 colnames(df)[4:8] <- paste("DMA", colnames(df)[4:8], sep = "_") 
 
-tmp_ions <- ions[,c("ionIndex",'mzLabel','idKEGG','score', "name")] %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n())
-
-tmp_ions[tmp_ions$mzLabel == 'mz133.0145',"name"] <- "Malate"
-
-df <- merge(df, tmp_ions, by='ionIndex')
+df <- merge(df, ions, by='ionIndex')
 
 write.csv(df, file = 'metabolite_GR24_association_survivingCI_ionLabel.csv')
 
@@ -1103,7 +1176,7 @@ lapply(unique(df$drug), function(drug){
   
   tmp <- tmp[,c("name","mzLabel","EC50_FC","DMA_slope","basal_slope")]
   
-  tmp$name <- as.character(sapply(tmp$name, substrRight, 25))
+  #tmp$name <- as.character(sapply(tmp$name, substrRight, 25))
   
   tmp$name <- paste(tmp$name, paste0("(",tmp$mzLabel,")"), sep = " ")
   
@@ -1337,6 +1410,12 @@ ggplot(tmp, aes(y= name, x= year1, fill = count))+
 setwd(path_data_file)
 df <- read.csv("drug_metabolite_associations.csv")
 
+df <- df[ifelse(df$name =="",F,T),]  #remove non annotated
+
+drugs_to_plot <- df %>% group_by(drug) %>% filter(n()>=5)
+
+df <- df[df$drug %in% drugs_to_plot$drug,] #remove drugs with less than 5 associations
+
 df <- df %>% group_by(drug) %>% dplyr::arrange(abs(DMA_slope)) %>% dplyr::slice_tail(n=10)
 
 df <- df %>% group_by(drug) %>%dplyr::arrange(abs(DMA_slope)) %>%  dplyr::mutate(slope_norm = c(10:1)[1:n()])
@@ -1348,7 +1427,17 @@ df$DMA_slope <- ifelse(df$DMA_slope >=2,2, df$DMA_slope)
 df$DMA_slope <- ifelse(df$DMA_slope <=c(-2),-2, df$DMA_slope)
 
 
-df$name <- as.character(sapply(df$name, substrRight, 25))
+#shorten the ion name so it fits in plotting
+
+df[which(df$mzLabel == "mz579.0267"),'name'] <- "UDP glucuronic acid" #Uridine diphosphate glucuronic acid
+
+df[which(df$mzLabel == "mz377.0325"),'name'] <- "Me-TIMP" #6-Methylthiopurine 5''-monophosphate ribonucleotide
+
+df[which(df$mzLabel == "mz363.0170"),'name'] <- "6-Thio-IMP" #6-Thioinosine-5''-monophosphate
+
+df[which(df$mzLabel == "mz613.1403"),'name'] <- "CMP-NeuNAc" #Cytidine monophosphate N-acetylneuraminic acid
+
+#df$name <- as.character(sapply(df$name, substrRight, 25))
 
 df$name <- paste(df$name, paste0("(",df$mzLabel,")"), sep = " ")
 
@@ -1369,16 +1458,13 @@ df <- merge(df, drug_metadata[,c('drug', 'Class')], by = 'drug')
 
 #start circos plot
 
-
-
-library(circlize)
-
 df$x=0
+
 df$color <- ifelse(df$DMA_slope<0, "#FF0000", "green4")
-#circos.par("track.height" = 0.3,cell.padding = c(0.02, 0.04, 0.02, 0.04))
+
 setwd(path_fig)
 
-png("association_GR24_metabolite.png",width = 8000,height = 8000,res = 700)
+png("association_GR24_metabolites.png",width = 7000,height = 7000,res = 700)
 
 x1 <- x2 <- y1 <-y2 <-0.5
 
@@ -1391,7 +1477,7 @@ circos.track(df$drug, y =df$DMA_slope,
                #circos.axis(major.tick = F,labels = NULL)
              },bg.border = NA)
 
-circos.trackText(sectors = df$drug,x = df$slope_norm, y= df$x, labels = df$name,
+circos.trackText(sectors = df$drug,x = df$slope_norm, y= df$x- mm_y(3), labels = df$name,
                  cex= 0.6,track.index = 1,facing = 'clockwise',col = df$color,adj =  c(0),niceFacing = T)
 
 circos.track(df$drug, y =df$DMA_slope,
@@ -1450,8 +1536,8 @@ for(x in (df$drug)){
 circos.track(df$drug, y =df$DMA_slope,
              panel.fun = function(x, y) {
                circos.text(CELL_META$xcenter,track.index = 6,
-                           CELL_META$cell.ylim[2] - mm_y(13),
-                           CELL_META$sector.index,cex = 1,facing = 'clockwise',niceFacing = T)
+                           CELL_META$cell.ylim[2] - mm_y(2),
+                           CELL_META$sector.index,cex = 1,facing = 'clockwise',niceFacing = T, adj = c(1, 0.5))
              },bg.border = NA)
 
 dev.off()
@@ -1587,34 +1673,25 @@ comb_data$perfect_fit <- comb_data$mean_ion.x
 
 library(ggrepel)
 
-
+setwd(path_fig)
 df$drugmetab <- paste(df$drug, df$name)
+
+df$drugmetab = ifelse(df$drug %in% c('Decitabine', 'BPTES'), df$drugmetab,"")
+
+df$drugmetab = ifelse(abs(df$DMA_slope)>2.5, df$drugmetab,"")
 
 
 ggplot(df, aes(x = rank(DMA_slope) ,y=DMA_slope, label = drugmetab))+
   geom_point()+
-  geom_text_repel(size = 3)
+  geom_text_repel(box.padding = 0.5, max.overlaps = Inf,size = 3)+
+  theme_bw()+
+  xlab("Ranked DMA")+
+  ylab("DMA")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+                    panel.background = element_blank(), axis.line = element_line(colour = "black"))->plt
 
 
-
-ggplot(df, aes(x = rank(basal_slope) ,y=basal_slope, label = drugmetab))+
-  geom_point()+
-  geom_text_repel(size = 3)
-
-
-
-ggplot(df, aes(x = rank(DMA_slope) ,y=DMA_slope, label = name))+
-  geom_point()+
-  geom_text_repel(size = 3)+
-  facet_grid(~drug)
-
-
-
-ggplot(df, aes(x = rank(basal_slope) ,y=basal_slope, label = name))+
-  geom_point()+
-  geom_text_repel(size = 3)+
-  facet_grid(~drug)
-
+ggsave(filename = 'rankedDMA.pdf',plt,width =3,height = 2.6)
 
 
 # R/S/I clustergram -------------------------------------------------------
