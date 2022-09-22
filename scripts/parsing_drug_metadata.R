@@ -1,7 +1,11 @@
-### IMPORT PACKAGES ###
+#this script generates a drug metadata with NSC, CAS and metadata information for drugs
+
 setwd('C:\\Users\\masierom\\polybox\\Data')
-path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean'
-path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data_mean'
+path_fig = setwd("../figures")
+path_data_file = setwd("../data")
+
+### IMPORT PACKAGES ###
+
 library(ggplot2)
 library(tidyr)
 library(readxl)
@@ -39,10 +43,9 @@ colnames(NSC_to_CAS)[2] = 'CAS'
 
 NSC_to_CAS <- NSC_to_CAS[NSC_to_CAS$NSC %in% unique(drugs$NSC),] #use this trick to avoid keeping unique values from duplicated in which one NSC is paired and the other is not to the drugs$NSC
 
-NSC_to_CAS <- NSC_to_CAS[!(duplicated(NSC_to_CAS[2]) | duplicated(NSC_to_CAS[2], fromLast = F)), ] #FIXME since I dont know which is the corect NSC, first parse the NCI_60 DSD and then add these things
+NSC_to_CAS <- NSC_to_CAS[!(duplicated(NSC_to_CAS[2]) | duplicated(NSC_to_CAS[2], fromLast = F)), ]
 
-#including everolymus (733504) cas in NSC_to_CAS
-
+# Add missing CAS numbers
 
 NSC_to_CAS[NSC_to_CAS$CAS == '152459-95-5', 'CAS'] = '220127-57-1' #imatinib
 
