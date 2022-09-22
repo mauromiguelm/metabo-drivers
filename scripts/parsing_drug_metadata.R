@@ -28,24 +28,6 @@ colnames(db_to_pubchem_drug)[3] <- 'CAS'
 
 NSC_to_CAS  <-  read.csv('NSC_CAS_Sept2013.csv', header = F, stringsAsFactors = F)
 
-#extract all sheets from excel file for metabolic data
-
-read_excel_allsheets <- function(filename) {
-  sheets <- readxl::excel_sheets(filename)
-  x <-    lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
-  names(x) <- sheets
-  x
-}
-
-AZ_metab = read_excel_allsheets('AstraScreenPipe_metabolome_Improved.xlsx')
-
-
-AZ_metab.ions = data.frame(AZ_metab$ions)
-AZ_metab.intensities1 = data.frame(AZ_metab$intensities1)
-
-rm(read_excel_allsheets)
-
-
 # organize data -----------------------------------------------------------
 
 
@@ -151,50 +133,6 @@ drug_to_target$DrugBank.ID = gsub(" ", "", drug_to_target$DrugBank.ID) # remove 
 drugs$CELL = gsub(" ", "", drugs$CELL) #remove whitespaces
 
 drugs$CELL = gsub("-", "", drugs$CELL) #remove hyphens 
-
-
-# Merge replicates on metabolome dataset 
-
-#AZ_metab.intensities = cbind(AZ_metab.intensities1, AZ_metab.intensities2[4:248])
-
-AZ_metab.intensities = AZ_metab.intensities1
-
-AZ_metab.intensities$ionActive = NULL
-AZ_metab.intensities$ionMz = NULL
-
-
-colnames(AZ_metab.intensities)[2] = '184A1'
-colnames(AZ_metab.intensities)[3] = '5637'
-colnames(AZ_metab.intensities)[4] = '647V'
-colnames(AZ_metab.intensities)[5] = '769P'
-colnames(AZ_metab.intensities)[6] = '786O'
-colnames(AZ_metab.intensities)[7] = '977'
-
-rm(AZ_metab.intensities1, AZ_metab)
-
-
-
-# transpose data frame 
-
-metab.data$dataset = AZ_metab.intensities
-
-metab.data$dataset = data.frame(t(metab.data$dataset), colname = T)
-
-colnames(metab.data$dataset) = metab.data$dataset[1, ]
-
-metab.data$dataset = metab.data$dataset[-1,]
-
-metab.data$dataset = tibble::rownames_to_column(metab.data$dataset, "CELL")
-
-metab.data$dataset$CELL = factor(metab.data$dataset$CELL)
-
-rm(AZ_metab.intensities)
-
-rm(db_to_pubchem_drug, drug_to_target)
-
-metab.data$dataset$CELL = gsub("786O", "7860", metab.data$dataset$CELL) 
-
-metab.data$dataset$"TRUE" <- NULL
 
 #merge datapoints in which there is more than one concentration of compound per cell line
 
@@ -372,7 +310,6 @@ ggsave('drugs_by_moa.png',plt,height = 5,width = 5)
 # add CAS to drug_sensitivity_NCI
 
 
-
 library(dplyr)
 
 kEGG_Cancer_drug_set <- inner_join(NSC_to_CAS, kEGG_Cancer_drug_set, by = 'CAS')
@@ -402,7 +339,6 @@ rm(AZ_metab.ions)
 drug_data$Kegg_metadata <- kEGG_Cancer_drug_set
 drug_data$NCI60_GI50_cancer <- drug_sensitivity_NCI_cancer
 drug_data$exp_drugs <- experimental_drugs
-
 
 
 # get hsa kegg cpds ----------------
