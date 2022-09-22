@@ -1,16 +1,31 @@
-if(!require(chron)){
-  install.packages("chron")
-  library(chron)
+# This script handles time conversions between experiments and cal --------
+
+#import packages
+
+library(chron)
+
+#import experimental data description
+
+setwd("../metadata")
+
+raw_data <- readxl::read_xlsx("drug_treatment_log.xlsx")
+
+#functions
+
+CET_to_GMT <- function(time_vector){
+  format(time_vector, tz = "GMT", usetz = T)
 }
 
-setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen")
+convert_time <- function(x){
+  if(is.na(x)){
+    return(NA)
+  }else{
+    lim <- (2-nchar(x)%%2)
+    txt <- paste(substring(x,1,lim),substring(x,lim+1,nchar(x)),"00", sep = ":")
+    return(txt)
+  }
+}
 
-raw_data <- readxl::read_xlsx("Description.xlsx")
-
-
-#removing unwanted cell lines in the analysis
-
-raw_data <- raw_data[4:24,]
 
 # Preparing time vectors for 384 well plates ------------------------------
 
@@ -41,16 +56,6 @@ time_data[,"sampling_day"] <- time_data[,"date_start"] + as.numeric(time_data[,"
 time_data[,"treatment_day"] <- time_data[,"date_start"]
 
 time_data[,"treatment_day"] <- time_data[,"date_start"] + (raw_data$day_sampling-1)
-
-convert_time <- function(x){
-  if(is.na(x)){
-    return(NA)
-    }else{
-      lim <- (2-nchar(x)%%2)
-      txt <- paste(substring(x,1,lim),substring(x,lim+1,nchar(x)),"00", sep = ":")
-      return(txt)
-    }
-  }
 
 #organizing SEEDING time
 
@@ -93,7 +98,7 @@ time_data[,"time_treatment384_p2_end"] <- tmp
 
 #organizing 96 TREATMENT time
 
-time_data[,"time_treatment_96p1_end"] <- unlist(lapply(raw_data$`time_treatment_96_p1_end***`, convert_time))
+time_data[,"time_treatment_96p1_end"] <- unlist(lapply(raw_data$`time_treatment_96_p1_end`, convert_time))
 time_data[,"time_treatment_96p1_end"] <- chron(times = time_data[,"time_treatment_96p1_end"]) 
 
 tmp <- paste(time_data[,"treatment_day"], time_data[,"time_treatment_96p1_end"])
@@ -104,7 +109,7 @@ tmp <- as.POSIXct(tmp)
 
 time_data[,"time_treatment_96p1_end"] <- tmp 
 
-time_data[,"time_treatment_96p2_end"] <- unlist(lapply(raw_data$`time_treatment_96_p2_end***`, convert_time))
+time_data[,"time_treatment_96p2_end"] <- unlist(lapply(raw_data$`time_treatment_96_p2_end`, convert_time))
 time_data[,"time_treatment_96p2_end"] <- chron(times = time_data[,"time_treatment_96p2_end"]) 
 
 tmp <- paste(time_data[,"treatment_day"], time_data[,"time_treatment_96p2_end"])
@@ -166,11 +171,7 @@ time_data[,"p2_sampling_end"] <- tmp
 
 # here the order is q1, q2, q3 and q4 for p1 and p2, respectivelly.
 
-
-
 lapply(rownames(time_data), function(row){
-  
-  #row <- 8
   
   data <- time_data[row,]
   
@@ -190,10 +191,7 @@ lapply(rownames(time_data), function(row){
       plate_sampling_start <- do.call(rbind, plate_sampling_start)[,1]
       
       return(plate_sampling_start)
-
-      
     }
-    
     
   }) -> time_sampling_96p1
 
@@ -253,9 +251,6 @@ lapply(rownames(time_data), function(row){
     
   }
   
-  
-
-  
 }) -> time_sampling_96p2
 
 unlist(lapply(as.numeric(rownames(time_data)), function(row){
@@ -275,7 +270,6 @@ unlist(lapply(as.numeric(rownames(time_data)), function(row){
     time_sampling <- time_sampling_96p2[[row]]
     
     treatment_time <-difftime(time_sampling, data$time_treatment_96p2_end, units = "h")
-    
     
     return(treatment_time)
     
@@ -337,10 +331,6 @@ if(plot == T){
 }
 
 # converting CET/CEST to GMT
-
-CET_to_GMT <- function(time_vector){
-  format(time_vector, tz = "GMT", usetz = T)
-}
 
 time_data[,c(5:13)] <- CET_to_GMT(time_data[,c(5:13)])
 
