@@ -1,0 +1,22 @@
+depmap_id,cell_line_display_name,lineage_1,lineage_2,lineage_3,lineage_4
+ACH-000555,A498,Kidney,Renal Cell Carcinoma,,
+ACH-000046,ACHN,Kidney,Renal Cell Carcinoma,,
+ACH-000288,BT549,Breast,Breast Ductal Carcinoma,ERneg HER2neg,Basal B
+ACH-001039,COLO205,Colorectal,Colorectal Adenocarcinoma,,
+ACH-000706,EKVX,Lung,NSCLC,NSCLC Adenocarcinoma,
+ACH-000997,HCT15,Colorectal,Colorectal Adenocarcinoma,,MSI
+ACH-000861,HOP62,Lung,NSCLC,NSCLC Adenocarcinoma,
+ACH-000148,HS578T,Breast,Breast Carcinoma,ERneg HER2neg,Basal B
+ACH-000552,HT29,Colorectal,Colorectal Adenocarcinoma,,
+ACH-000966,IGROV1,Ovary,Ovary Adenocarcinoma,Mixed Endometrioid Clear Cell,
+ACH-000750,LOXIMVI,Skin,Melanoma,,
+ACH-002159,M14,Skin,Melanoma,Amelanotic,
+ACH-000477,MALME3M,Skin,Melanoma,,
+ACH-000768,MDAMB231,Breast,Breast Carcinoma,ERneg HER2neg,Basal B
+ACH-000617,OVCAR4,Ovary,Ovary Adenocarcinoma,High Grade Serous,
+ACH-001151,OVCAR5,Ovary,Ovary Adenocarcinoma,High Grade Serous,
+ACH-000273,SF539,Central Nervous System,Glioma,,
+ACH-001190,SKMEL2,Skin,Melanoma,,
+ACH-000651,SW620,Colorectal,Colorectal Adenocarcinoma,,
+ACH-000147,T47D,Breast,Breast Ductal Carcinoma,ERpos HER2neg,Luminal
+ACH-000579,UACC257,Skin,Melanoma,,
