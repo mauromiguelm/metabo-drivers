@@ -230,7 +230,7 @@ for(poly_degree in poly_degree){
   exclusions_noise <- data.frame("plate"=character(),"exclusions"=integer())
   
   base::lapply(names(data_corrected), function(plate_name){
-    #plate_name = "20191106/results/MALME3M_CL1_P2.txt"
+    
     print(plate_name)
     
     data_raw <- data_corrected[[plate_name]]
@@ -360,8 +360,7 @@ for(poly_degree in poly_degree){
   
   # combining metadata of source.plates into growth_data ######
   
-  #source_layout[[1:2]] one and two refer to the first batch (plate 1 and 2), which had problems in Echo transfer.
-  #source_layout[[3:4]] three and four refer to the second GOOD batch (plate 3 and 4), which were used in the big screen.
+  #source_layout[[1:2]] one and two refer to plates 1 and 2, which originated from Echo transfer.
   
   
   source_layout <- # import source plate layout data
@@ -371,8 +370,6 @@ for(poly_degree in poly_degree){
                       full.names = T,
                       recursive = T),
            function(x) {
-             
-             #x =  "\\\\imsbnas.d.ethz.ch\\sauer1\\users\\Mauro\\cpd_data\\large_screen_plate_layout/190806_NewMSP_Layout/randomized_layout_1MSP_batch2.xls"
              
              tmp_data  = readxl::read_xls(x)
              
@@ -390,53 +387,27 @@ for(poly_degree in poly_degree){
       
       tmp_data = data_corrected[[x]]
       
-      match_source <- source_plates[source_plates$filenames == x,c("sourceid", "batch")] 
+      match_source <- source_plates[source_plates$filenames == x,c("sourceid", "uniqueID")] 
       
-      if(match_source$batch == "batch_1"){
+      if(grepl(pattern = "1MSP", x = match_source$sourceid)){
         
-        if(grepl(pattern = "1MSP", x = match_source$sourceid)){
-          
-          tmp_data <- inner_join(tmp_data, source_layout[[1]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-          
-          return(tmp_data)
-          
-        }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
-          
-          tmp_data <- inner_join(tmp_data, source_layout[[2]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-          
-          return(tmp_data)
-          
-        }else{
-          
-          stop("some experimental plate could not be matched to a source plate layout.")
-          
-        }
+        tmp_data <- inner_join( tmp_data, source_layout[[1]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
         
-      } else if(match_source$batch == "batch_2"){
+        return(tmp_data)
         
-        if(grepl(pattern = "1MSP", x = match_source$sourceid)){
-          
-          tmp_data <- inner_join( tmp_data, source_layout[[3]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-          
-          return(tmp_data)
-          
-        }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
-          
-          tmp_data <- inner_join(  tmp_data, source_layout[[4]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
-          
-          return(tmp_data)
-          
-        }else{
-          
-          stop("some experimental plate could not be matched to a source plate layout.")
-          
-        }
+      }else if(grepl(pattern = "2MSP", x =match_source$sourceid)){
+        
+        tmp_data <- inner_join(  tmp_data, source_layout[[2]][,c("Well","Drug" , "Final_conc_uM")], by = "Well")
+        
+        return(tmp_data)
         
       }else{
         
-        stop("some information is wrong with the match_source$source_id")
+        stop("some experimental plate could not be matched to a source plate layout.")
         
       }
+        
+    
       
     } )
   
