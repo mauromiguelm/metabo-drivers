@@ -6,9 +6,7 @@ library(chron)
 
 #import experimental data description
 
-setwd("../metadata")
-
-raw_data <- readxl::read_xlsx("drug_treatment_log.xlsx")
+raw_data <- readxl::read_xlsx("metadata/drug_treatment_log.xlsx")
 
 #functions
 
@@ -25,7 +23,6 @@ convert_time <- function(x){
     return(txt)
   }
 }
-
 
 # Preparing time vectors for 384 well plates ------------------------------
 
@@ -228,8 +225,6 @@ names(time_sampling_96p1) <- time_data$cell_line
 
 lapply(rownames(time_data), function(row){
   
-  #row <- 8
-  
   data <- time_data[row,]
   
   if(any(is.na(c(data[["p2_sampling_end"]], data[["p2_sampling_start"]])))){
@@ -254,8 +249,6 @@ lapply(rownames(time_data), function(row){
 }) -> time_sampling_96p2
 
 unlist(lapply(as.numeric(rownames(time_data)), function(row){
-  
-  #row <- 4
   
   data <- time_data[row,]
   
@@ -303,7 +296,7 @@ if(plot == T){
   (p <- ggMarginal(p, type="histogram", size=2))
   
   ggsave(filename = "paperReady_384_incubation_times.png", plot = p, device = "png",
-         path = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures")
+         path = "figures/")
   
 }
 
@@ -326,7 +319,7 @@ if(plot == T){
   (p <- ggMarginal(p, type="histogram", size=2))
   
   ggsave(filename = "paperReady_96_incubation_times.png", plot = p, device = "png",
-         path = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures")
+         path = "figures/")
   
 }
 

@@ -2,3 +2,6 @@ __pycache__/
 venv/
 .idea/
 .Rhistory
+.Rproj.user
+data/confluence
+data/metabolomics

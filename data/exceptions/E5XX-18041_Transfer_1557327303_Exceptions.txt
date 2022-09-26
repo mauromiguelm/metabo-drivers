@@ -1,0 +1,6 @@
+Date Time Point	Source Plate Name	Source Plate Barcode	Source Plate Type	Source Well	Destination Plate Name	Destination Plate Barcode	Destination Plate Type	Destination Well	Destination Well X Offset	Destination Well Y Offset	Sample ID	Sample Name	Sample Group	Sample Comment	Transfer Volume	Actual Volume	Current Fluid Volume	Fluid Composition	Fluid Units	Fluid Type	Transfer Status
+2019-05-08 16:56:51.532	1MSPSource		384PP_AQ_BP2	G8	1MSP006		Nunc_384_CellCultureClear	H20	0	0	Gemcitabine_0.03mM	Gemcitabine	sample	0.1	332.5	0	0	0	Percent	Glycerol	MM0202007: Problem calc. well fluid volume fc: 0 ft: 0
+2019-05-08 16:56:51.533	1MSPSource		384PP_AQ_BP2	G8	1MSP006		Nunc_384_CellCultureClear	H13	0	0	Gemcitabine_0.03mM	Gemcitabine	sample	0.1	332.5	0	0	0	Percent	Glycerol	MM0202007: Problem calc. well fluid volume fc: 0 ft: 0
+2019-05-08 16:56:51.534	1MSPSource		384PP_AQ_BP2	G8	1MSP006		Nunc_384_CellCultureClear	H8	0	0	Gemcitabine_0.03mM	Gemcitabine	sample	0.1	332.5	0	0	0	Percent	Glycerol	MM0202007: Problem calc. well fluid volume fc: 0 ft: 0
+2019-05-08 16:56:51.534	1MSPSource		384PP_AQ_BP2	G8	1MSP006		Nunc_384_CellCultureClear	P7	0	0	Gemcitabine_0.03mM	Gemcitabine	sample	0.1	332.5	0	0	0	Percent	Glycerol	MM0202007: Problem calc. well fluid volume fc: 0 ft: 0
+

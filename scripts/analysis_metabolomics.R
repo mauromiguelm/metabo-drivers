@@ -6,6 +6,8 @@ path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cel
 path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean_hsa\\metabolomics'
 path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
 
+
+
 source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\plate_converter.R")
 library(openxlsx)
 library(dplyr)

@@ -432,12 +432,12 @@ heatmap.2(abs(as.matrix(GR24_var)), trace="none", key=T,col = viridis(20), margi
 dev.off()
 
 
-# define groups variable concentrations within drugs based on GR24 ----------------------------
+# compute concentrations variability within drugs based on GR24 ----------------------------
 
 #The goal for this is to:
   # Remove GR24 outliers
   # remove pairs of drug_conc that are inefective across all CCLs or that are too strong
-  #low = drug_conc without effect across all CCLs
+  #low/high = drug_conc without/with effect across all CCLs
 
 #import GR24 data
 

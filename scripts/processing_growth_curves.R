@@ -1,53 +1,32 @@
 ## import R functions ####
 
-library(ggplot2); library(RColorBrewer)
+library(ggplot2); library(RColorBrewer);library(openxlsx)
+library(confluencer) #https://github.com/mauromiguelm/confluencer
 
-# Importing plate times ####  
+# Importing exceptions and sampling/treatment times ####
 
-source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\analysis\\main_screen\\time_analysis.R")
+source("scripts/time_analysis.R")
+source("data/exceptions/log_processing.r")
 
-# import functions cell culture #####
+# import params #####
 
-sapply(list.files("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\",full.names=T),source,.GlobalEnv)
-
-# Importing exceptions ####
-
-source("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\exceptions\\log_processing.r")
-
-## paths & parameters ##
-
-path_clean_data <- "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data"
-path_fig <- "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users/mauro/cell_culture_data/190310_largescreen/figures"
-
-
-correct_for_initial_seeding = T
-skip_first_time = F
-r.2.threshold = 0.8
-slope_cutoff = 0.05
-p.val_cutoff = 0.05
-intercept_sd_cutoff = 2.5
-poly_degree = 8
-
+source("parameters/parsing_growth_curves.R")
 
 ## Importing source plates #####
 
-setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\growthData")
+#path to confluence data
 
 source_plates <- data.frame(
   filenames = list.files(
-    path = "\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\Growthdata\\",
+    path = "data//confluence",
     pattern = "[P][1-2][.txt]",
     recursive = T))
 
 source_plates$sourceid <- ifelse(grepl(pattern = "P1", source_plates$filenames), "1MSP001", "2MSP001")
 
-source_plates$batch <- ifelse(grepl(pattern = "20190513", source_plates$filenames), "batch_1", "batch_2")
+source_plates <- source_plates[source_plates$batch=='batch_2',]
 
-source_plates <- source_plates[source_plates$batch=='batch_2',] #removing batch_1 which robot broke causing many errors
-
-setwd("..")
-
-tmp <- read.xlsx("Description.xlsx") #removing batch_1 which robot broke causing many errors
+tmp <- read.xlsx("metadata/drug_treatment_log.xlsx")
 
 tmp <- tmp[4:nrow(tmp),] 
 source_plates$uniqueID <- NA
@@ -74,8 +53,6 @@ source_plates$uniqueID[msp2] <- tmp$source2[msp2]
 
 rm(tmp, msp1, msp2)
 
-setwd("./growthData")
-
 #import growth curves ####
 
 fileNames <- as.character(source_plates$filenames)
@@ -89,7 +66,7 @@ data <-
     
     df <-
       ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = x,
-                       Plate_size = 384, FileDirectory = getwd(),
+                       Plate_size = 384, FileDirectory = 'data/confluence',
                        time_output = "GMT",skip_first_time=skip_first_time,
                        correct_init_seeding = correct_for_initial_seeding)
     
@@ -550,6 +527,6 @@ data_corrected <- data_corrected[!groups %in% groups_to_exclude,]
 
 rm(list = ls()[!ls()=="data_corrected"])
 
-setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data")
+setwd(path_clean_data)
 
 save(data_corrected, file = "growth_curves_filtered.RData")
