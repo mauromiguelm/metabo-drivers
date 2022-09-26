@@ -487,4 +487,4 @@ data_corrected <- data_corrected[!groups %in% groups_to_exclude,]
 
 rm(list = ls()[!ls()=="data_corrected"])
 
-save(data_corrected, file = "data\\growth_curves_filtered.RData")
+save(data_corrected, file = "data\\confluence\\growth_curves_filtered.RData")
