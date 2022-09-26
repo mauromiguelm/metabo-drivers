@@ -1,9 +1,5 @@
 #this script generates a drug metadata with NSC, CAS and metadata information for drugs
 
-setwd('C:\\Users\\masierom\\polybox\\Data')
-path_fig = setwd("../figures")
-path_data_file = setwd("../data")
-
 ### IMPORT PACKAGES ###
 
 library(ggplot2)
@@ -18,19 +14,19 @@ drug_data <- list()
 
 metab.data <- list()
 
-drugs = read.csv('CANCER60GI50_updatedExperCpds.lst', stringsAsFactors = F) 
+drugs = read.csv('metadata//CANCER60GI50_updatedExperCpds.lst', stringsAsFactors = F) 
 
-drugs$CONCUNIT[drugs$CONCUNIT == "log10(M)"] <- "M"
+drugs = drugs[which(drugs$CONCUNIT != "log10(M)"),] #remove this single drug with unclear concentration
 
 drugs$NLOGGI50 <- as.numeric(as.character(drugs$NLOGGI50))
 
-drug_to_target <- read.csv('drugbank_all_target_polypeptide_ids.csv', stringsAsFactors = F)
+drug_to_target <- read.csv('metadata//drugbank_all_target_polypeptide_ids.csv', stringsAsFactors = F)
 
-db_to_pubchem_drug <-  read.csv('DB_Pubchem_drug links.csv', stringsAsFactors = F)
+db_to_pubchem_drug <-  read.csv('metadata//DB_Pubchem_drug links.csv', stringsAsFactors = F)
 
 colnames(db_to_pubchem_drug)[3] <- 'CAS'
 
-NSC_to_CAS  <-  read.csv('NSC_CAS_Sept2013.csv', header = F, stringsAsFactors = F)
+NSC_to_CAS  <-  read.csv('metadata//NSC_CAS_Sept2013.csv', header = F, stringsAsFactors = F)
 
 # organize data -----------------------------------------------------------
 
@@ -242,7 +238,6 @@ experimental_drugs <- data.frame(Class =             c("Fatty acid biosynthesis"
 
 kEGG_Cancer_drug_set <- rbind(kEGG_Cancer_drug_set, experimental_drugs)
 
-
 # Include whether drug is in screen or not
 
 kEGG_Cancer_drug_set$is_Screen <- 0
@@ -270,7 +265,7 @@ kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "Omacetaxine" ,"is_Scr
 kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "BPTES" ,"is_Screen"] <- 1
 kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "CB-839" ,"is_Screen"] <- 0  #removed from 1 to 0, 20220613
 kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "Oligomycin A" ,"is_Screen"] <- 1
-kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "Shikonin" ,"is_Screen"] <- 0  #this guy is not on screen, removed from 1 to 0, 20220613
+kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "Shikonin" ,"is_Screen"] <- 0  #this drug is not on screen, removed from 1 to 0, 20220613
 kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "Panzem (2-ME)" ,"is_Screen"] <- 1
 kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "17-AAG" ,"is_Screen"] <- 1
 kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "YC-1" ,"is_Screen"] <- 1
@@ -287,28 +282,26 @@ kEGG_Cancer_drug_set[kEGG_Cancer_drug_set$Generic.name == "Trametinib" ,"is_Scre
 
 # export Cancer drug indications as drug metadata 
 
-setwd("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\drug-metadata")
-
 tmp <- subset(kEGG_Cancer_drug_set, is_Screen == 1)
 
 tmp = tmp[!(duplicated(tmp$Generic.name) #remove duplicated with multiple inducations 
                                               | duplicated(tmp$Generic.name, fromLast = F)), ]
 
-write.csv(tmp,"drug_metadata_moa.csv")
+write.csv(tmp,"metadata/drug_metadata_moa.csv")
 
 #plot drug classes
 
 setwd(path_fig)
 
-tmp <- read.csv("drug_metadata_moa.csv")
+tmp <- read.csv("metadata/drug_metadata_moa.csv")
 
 ggplot(tmp, aes(Class))+
   geom_histogram(stat="count")+
   theme_bw()+
   theme(axis.text.x = element_text(angle=90,vjust=0,hjust=1))->plt
 
-ggsave('drugs_by_moa.pdf',plt,height = 5,width = 5)
-ggsave('drugs_by_moa.png',plt,height = 5,width = 5)
+ggsave('figures/drugs_by_moa.pdf',plt,height = 5,width = 5)
+ggsave('figures/drugs_by_moa.png',plt,height = 5,width = 5)
 
 # add CAS to drug_sensitivity_NCI
 
@@ -364,7 +357,7 @@ lapply(names(path_map), function(idx){
 
 cpds_human <- unique(unlist(cpds_human))
 
-write.csv(cpds_human,file = 'kegg_hsa_cpds.csv')
+write.csv(cpds_human,file = 'metadata/kegg_hsa_cpds.csv')
 
 
 # remove unused data ------------------------------------------------------
