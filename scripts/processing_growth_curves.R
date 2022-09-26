@@ -1,7 +1,10 @@
 ## import R functions ####
 
-library(ggplot2); library(RColorBrewer);library(openxlsx)
-library(confluencer) #https://github.com/mauromiguelm/confluencer
+library(ggplot2); library(RColorBrewer);library(openxlsx);library(magrittr); library(dplyr)
+
+if(!require(confluencer)) {
+  devtools::install_github("mauromiguelm/confluencer") 
+}
 
 # Importing exceptions and sampling/treatment times ####
 
@@ -24,11 +27,8 @@ source_plates <- data.frame(
 
 source_plates$sourceid <- ifelse(grepl(pattern = "P1", source_plates$filenames), "1MSP001", "2MSP001")
 
-source_plates <- source_plates[source_plates$batch=='batch_2',]
-
 tmp <- read.xlsx("metadata/drug_treatment_log.xlsx")
 
-tmp <- tmp[4:nrow(tmp),] 
 source_plates$uniqueID <- NA
 
 cell <- strsplit(x = as.character(source_plates$filenames), split = "/")
@@ -60,14 +60,11 @@ fileNames <- as.character(source_plates$filenames)
 data <- 
   
   lapply(fileNames, function(x) {
-    
-    #x = fileNames[1]
-    print(fileNames)
+    print(x)
     
     df <-
-      ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = x,
-                       Plate_size = 384, FileDirectory = 'data/confluence',
-                       time_output = "GMT",skip_first_time=skip_first_time,
+      ReadIncuCyteData(read_platemap = F, FileName_IncuCyte = paste0('data/confluence/',x),
+                       Plate_size = 384,time_output = "GMT",skip_first_time=skip_first_time,
                        correct_init_seeding = correct_for_initial_seeding)
     
     
@@ -82,7 +79,7 @@ names(data) <- fileNames
 ### Create elapsed and sampling times based on time_vectors for the 384 plates ######
 
 data <- lapply(names(data), function(filename){
-  
+  #filename = names(data[1])
   print(filename)
   
   start_str <- "results/"
@@ -106,7 +103,6 @@ data <- lapply(names(data), function(filename){
   
   p2_treatment_end <- time_vectors$plate384[time_vectors$plate384$cell_line == cell_line,
                                             "time_treatment_96p2_end"]
-  
   
   if(plate == "P1"){
     
@@ -185,6 +181,7 @@ tmp_names <- names(data_corrected)
 data_corrected <-
   
   lapply(names(data_corrected), FUN = function(x){
+    #x = names(data_corrected)[1]
     
     print(x)
     
@@ -193,12 +190,13 @@ data_corrected <-
     x = data_corrected[[x]]
     
     good_wells <-
-      filter_growth_outliers(plate_name = paste(plate_name,"corr-init-seed=",correct_for_initial_seeding,'remove-first-time',skip_first_time,sep = "_"), data = x, time_control = 0, save_diag_plots = F,
+      filter_growth_outliers(plate_name = paste(plate_name,"corr-init-seed=",correct_for_initial_seeding,'remove-first-time',skip_first_time,sep = "_"), 
+                             data = x, time_control = 0, save_diag_plots = F,
                              slope_cutoff = slope_cutoff,
                              p.val_cutoff = p.val_cutoff,
                              intercept_sd_cutoff = intercept_sd_cutoff,
                              return_stats = T,
-                             save_plots_directory = paste(path_fig,"exclusions-growth", sep = "\\"))
+                             save_plots_directory = paste('figures',"exclusions-growth", sep = "\\"))
     
     
     new_data <-
@@ -214,10 +212,8 @@ data_corrected <-
 
 #save summary of plate outliers to excel
 
-setwd(paste0(path_clean_data,"/growth_data"))
-
 write.csv(do.call(rbind,lapply(data_corrected,"[[",2)),
-          paste("growth_data_exclusions_growth","corr-init-seed=",correct_for_initial_seeding,'remove-first-time',skip_first_time,".csv",sep = "_"))
+          paste("data//confluence//growth_data_exclusions_growth","corr-init-seed=",correct_for_initial_seeding,'remove-first-time',skip_first_time,".csv",sep = "_"))
 
 data_corrected <- lapply(data_corrected,"[[",1)
 
@@ -336,7 +332,7 @@ for(poly_degree in poly_degree){
     
     #print(paste(as.character(bad_wells), plate_name), sep = "_")
     
-    png(filename = paste(path_fig,"exclusions-noise", filename , sep = "/"))
+    png(filename = paste0("figures//","exclusions//", filename))
     fig <- hist(diagnostics_well$adj.r.2, main = plate_name)
     text( paste0("adj.r.2 < 0.8 = ", length(bad_wells)) , x = fig$breaks[3], y = max(fig$counts))
     dev.off()
@@ -349,17 +345,14 @@ for(poly_degree in poly_degree){
     
     pred_conf <- inner_join(pred_conf, metadata_df, by = grouping_vars)
     
-    #return a df with 
-    
-    
     return(list(pred_conf, exclusions_noise))
     
   }) -> data_corrected
   
   #save exclusions based on r^2
   
-  setwd(paste0(path_clean_data,"/growth_data"))
-  write.csv(do.call(rbind,lapply(data_corrected,"[[",2)),paste0("growth_data_exclusions_noise","polydegree=",poly_degree,".csv"))
+  write.csv(x= do.call(rbind,lapply(data_corrected,"[[",2)),file = 
+              paste0("data//exclusions//","growth_data_exclusions_noise","polydegree=",poly_degree,".csv"))
   data_corrected <- lapply(data_corrected,function(x){
     return(x[[1]])
     })
@@ -373,7 +366,7 @@ for(poly_degree in poly_degree){
   
   source_layout <- # import source plate layout data
     
-    lapply(list.files("\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\cpd_data\\large_screen_plate_layout",
+    lapply(list.files("metadata//large_screen_plate_layout",
                       pattern = "randomized",
                       full.names = T,
                       recursive = T),
@@ -392,8 +385,6 @@ for(poly_degree in poly_degree){
   data_corrected <-
     
     lapply(names(data_corrected), function(x){
-      
-      stopifnot(require(dplyr))
       
       #x = names(data_corrected)[1] 
       
@@ -487,8 +478,6 @@ for(poly_degree in poly_degree){
   
   data_corrected <- do.call(rbind, data_corrected)
   
-  setwd(paste0(path_clean_data,"/growth_data"))
-  
   #remove unsused wells (wells without drug in drug source plate).
   
   data_unused_wells <- data_corrected[(is.na(data_corrected$Drug)), ]
@@ -511,11 +500,11 @@ for(poly_degree in poly_degree){
 
 data_drugs <- subset(data_corrected,!Drug %in% c("PBS","DMSO") & Time == 24)
 
-exclusions_reps <- data_drugs %>% group_by(cell, Drug, Final_conc_uM) %>% dplyr::summarise(nreps = n())
+exclusions_reps <- data_drugs %>% group_by(`cell`, `Drug`, `Final_conc_uM`) %>% dplyr::summarise(nreps = n())
 
 exclusions_reps <- subset(exclusions_reps, nreps <3)
 
-write.csv(exclusions_reps, "exclusion_nreps.csv")
+write.csv(exclusions_reps, "data\\exclusions\\exclusion_nreps.csv")
 
 groups_to_exclude <- paste(exclusions_reps$cell,exclusions_reps$Drug, exclusions_reps$Final_conc_uM,sep = "_")
 
@@ -527,6 +516,4 @@ data_corrected <- data_corrected[!groups %in% groups_to_exclude,]
 
 rm(list = ls()[!ls()=="data_corrected"])
 
-setwd(path_clean_data)
-
-save(data_corrected, file = "growth_curves_filtered.RData")
+save(data_corrected, file = "data\\growth_curves_filtered.RData")
