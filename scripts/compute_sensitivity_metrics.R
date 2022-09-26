@@ -4,40 +4,19 @@
 
 library(tidyr); library(ggplot2);library(gplots);library(RColorBrewer);library(viridis); library(GRmetrics)
 
-path_metabolomics_in <- "./metetabolomics"
-path_data_file = "./data"
-path_fig = "./figures"
-path_metadata = "./metadata"
+#import parameters
 
-setwd(path_data_file)
-load("growth_curves_filtered.RData")
+source("parameters/compute_sensitivity_metrics.R")
 
-time_treatment <- 0 #when was the drug added
-cutoff_GR_max_growth_effect <- 50 #pairs of drug & conc with abs change < this number will be excluded
-cutoff_GR_conc_min_CV <- 10 #pairs of drug & conc with CV < this number will be excluded
+#load growth curves 
+
+load("data/confluence/growth_curves_filtered.RData")
+
 drugs_in_screen <- c(unique(data_corrected$Drug[!(data_corrected$Drug %in% c("PBS", "DMSO"))]))
-
-#import log2fc metabolomics data
-
-setwd(paste0(".",path_data_file,"\\metabolomics","\\log2fc"))
-
-metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
-
-metab_fcs <- do.call(rbind,metab_fcs)
-
-metab_fcs$X <- NULL
-names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
 
 #import cell metadata from depmap 
 
-setwd(paste0("../../.",path_metadata))
-
-cell_metadata <- read.csv("metadata_cells_depmap.csv")
-
-#import cleaned metadata
-
-setwd(paste0(".",path_metadata,'//','metabolomics'))
-metadata <- read.csv("metadata.csv")
+cell_metadata <- read.csv("metadata/metadata_cells_depmap.csv")
 
 # calculate growth inhibition 50 metrics -----------------------------------
 
@@ -142,9 +121,7 @@ output_IC50 <- do.call(rbind, output_IC50)
 
 #save output
 
-setwd(path_data_file)
-
-write.csv(output_IC50, "outcomes_growth_inhibition50.csv")
+write.csv(output_IC50, "data/outcomes_growth_inhibition50.csv")
 
 # #calculate percent inhibition for GR24 ----------------------------------
 
@@ -181,9 +158,7 @@ output_GR24 <- do.call(rbind,output_GR24)
 
 # save output 
 
-setwd(path_data_file)
-
-write.csv(output_GR24, "outcomes_GR24.csv")
+write.csv(output_GR24, "data/outcomes_GR24.csv")
 
 # #calculate percent inhibition for confluence ----------------------------------
 
@@ -215,9 +190,39 @@ output_conf <- do.call(rbind,output_conf)
 
 # save output 
 
-setwd(path_data_file)
+write.csv(output_conf, "data/outcomes_conf_change_to_control.csv")
 
-write.csv(output_conf, "outcomes_conf_change_to_control.csv")
+
+# compute concentrations variability within drugs based on GR24 ----------------------------
+
+#The goal for this is to:
+# Remove GR24 outliers
+# remove pairs of drug_conc that are inefective across all CCLs or that are too strong
+#low/high = drug_conc without/with effect across all CCLs
+
+#import GR24 data
+
+output_GR24 <- read.csv("data/outcomes_GR24.csv")
+
+#calculate CV
+GR24_outliers_low <- output_GR24 %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+
+#label low
+GR24_outliers_low$outliers <- ifelse(GR24_outliers_low$variation<=  cutoff_GR_conc_min_CV,"low", NA)
+
+#save output low
+
+write.csv(GR24_outliers_low, "data/GR24_outliers_low.csv")
+
+#define high outliers
+
+GR24_outliers_high <- output_GR24
+
+GR24_outliers_high$outliers <- ifelse(GR24_outliers_high$percent_change_GR<=  cutoff_GR_max_growth_effect,"high", NA)
+
+#save output
+
+write.csv(GR24_outliers_high, "data/GR24_outliers_high.csv")
 
 # plot phenotypic results -------------------------------------------------
 
@@ -240,8 +245,7 @@ tmp$Drug <- NULL
 
 rownames(tmp) <- tmp_names
 
-setwd(paste(path_fig,"GR24", sep = "\\"))
-png(paste("GR24",".png",sep="_"),height = 1200,width = 1200)
+png(paste("figures/GR24",".png",sep="_"),height = 1200,width = 1200)
 heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "PuOr"), margins=c(16,16),
           cexRow = 1.5,cexCol = 1.5,na.color = 'grey', scale = 'col')
 dev.off()
@@ -270,15 +274,11 @@ tmp <- tmp[rowSums(is.na(tmp)) != ncol(tmp), ]
 
 labels_heatmap <- cell_metadata[order(match(cell_metadata$cell_line_display_name, colnames(tmp))),]
 
-library(RColorBrewer)
-
 labels_heatmap$colors <- as.character(factor(labels_heatmap$lineage_1, labels = RColorBrewer::brewer.pal(length(unique(labels_heatmap$lineage_1)), "Spectral")))
-
-setwd(paste0(path_fig,'\\phenotype_figures'))
 
 drugs_of_heatmap <- rownames(tmp)
 
-pdf("IC50_phenotypes_72_legend.pdf")
+pdf("figures/IC50_phenotypes_72_legend.pdf")
 heatmap_dendogram <- heatmap.2(as.matrix(tmp), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "RdBu"), margins=c(16,16),
           cexRow = 0.85,cexCol = 0.85,scale = 'row',ColSideColors = labels_heatmap$colors)
 
@@ -288,9 +288,7 @@ dev.off()
 
 #import GR24 data
 
-setwd(path_data_file)
-
-output_GR24 <- read.csv("outcomes_GR24.csv")
+output_GR24 <- read.csv("data/outcomes_GR24.csv")
 
 tmp <- output_GR24
 
@@ -330,13 +328,12 @@ lapply(unique(tmp$Drug), function(drug_idx){
   
   rownames(text_data) <- tmp_name
   
-  setwd(paste(path_fig,'RSgroups', sep = "\\"))
-  png(paste("drug=",drug_idx,"percent_change_GR24.png",sep="_"),height = 1200,width = 1200)
+  png(paste("figures/drug=",drug_idx,"percent_change_GR24.png",sep="_"),height = 1200,width = 1200)
   heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
             cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3)
   dev.off()
   
-  png(paste("drug=",drug_idx,"percent_change_GR24_cluster.png",sep="_"),height = 1200,width = 1200)
+  png(paste("figures/drug=",drug_idx,"percent_change_GR24_cluster.png",sep="_"),height = 1200,width = 1200)
   heatmap.2(as.matrix(drug_data), trace="none", key=T,col = col_idxs, margins=c(16,16),breaks = col_breaks,
             cexRow = 2,cexCol = 3.5,na.color = 'grey', scale = 'none',keysize=0.75,cellnote = text_data,notecol="black",notecex=3,Colv='none')
   dev.off()
@@ -357,7 +354,7 @@ labels_heatmap <- cell_metadata[order(match(cell_metadata$cell_line_display_name
 
 
 labels_heatmap$colors <- as.character(factor(labels_heatmap$lineage_1, labels = RColorBrewer::brewer.pal(length(unique(labels_heatmap$lineage_1)), "Spectral")))
-library(RColorBrewer)
+
 
 m=as.matrix((GR24_var))
 plt <- heatmap(m,scale = "row",col = bluered(100), RowSideColors = labels_heatmap$colors)
@@ -385,15 +382,11 @@ GR24_basal_avg$cell <- NULL
 
 GR24_basal_avg$tmp <- GR24_basal_avg$avg_basal_GR24
 
-
 GR24_basal_avg <- GR24_basal_avg[order(rownames(GR24_basal_avg)),] 
 
 GR24_basal_avg <- GR24_basal_avg[rownames(GR24_basal_avg)[heatmap_dendogram$colInd],]
 
-
-setwd(paste0(path_fig,'\\phenotype_figures'))
-
-pdf("GR_median_24h.pdf")
+pdf("figures/GR_median_24h.pdf")
 heatmap.2(as.matrix(GR24_basal_avg), trace="none", key=T,col = RColorBrewer::brewer.pal(n=11, "PiYG"), margins=c(16,16),
           cexRow = 0.85,cexCol = 0.85,scale = 'none',Rowv = "null",Colv = "null")
 
@@ -422,53 +415,10 @@ GR24_var$Drug <- NULL
 
 GR24_var <-GR24_var[rev(na.omit(drugs_of_heatmap[heatmap_dendogram$rowInd],match(rownames(GR24_var) ))),] 
 
-library(viridis)
-
-setwd(paste0(path_fig,'\\phenotype_figures'))
-
-pdf("variance_across_concentration.pdf")
+pdf("figures/variance_across_concentration.pdf")
 heatmap.2(abs(as.matrix(GR24_var)), trace="none", key=T,col = viridis(20), margins=c(16,16),
           cexRow = 0.65,cexCol = 0.65,scale = 'row',Rowv = "null",Colv = "null")
 dev.off()
-
-
-# compute concentrations variability within drugs based on GR24 ----------------------------
-
-#The goal for this is to:
-  # Remove GR24 outliers
-  # remove pairs of drug_conc that are inefective across all CCLs or that are too strong
-  #low/high = drug_conc without/with effect across all CCLs
-
-#import GR24 data
-
-setwd(path_data_file)
-
-output_GR24 <- read.csv("outcomes_GR24.csv")
-
-#calculate CV
-GR24_outliers_low <- output_GR24 %>% dplyr::group_by(Drug, Final_conc_uM) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
-
-#label low
-GR24_outliers_low$outliers <- ifelse(GR24_outliers_low$variation<=  cutoff_GR_conc_min_CV,"low", NA)
-
-#save output low
-
-setwd(path_data_file)
-
-write.csv(GR24_outliers_low, "GR24_outliers_low.csv")
-
-#define high outliers
-
-GR24_outliers_high <- output_GR24
-
-GR24_outliers_high$outliers <- ifelse(GR24_outliers_high$percent_change_GR<=  cutoff_GR_max_growth_effect,"high", NA)
-
-#save output
-
-setwd(path_data_file)
-
-write.csv(GR24_outliers_high, "GR24_outliers_high.csv")
-
 
 # plot exclusions  
 
@@ -494,8 +444,7 @@ rownames(tmp) <- tmp_name
 
 exclusions <- ifelse(tmp <= log10(cutoff_GR_conc_min_CV), "off","")
 
-setwd(paste(path_fig,'RSgroups', sep = "\\"))
-png(paste("percent_change_CV.png",sep="_"),height = 1200,width = 1200)
+png(paste("figures/percent_change_CV.png",sep="_"),height = 1200,width = 1200)
 heatmap.2(as.matrix(tmp), trace="none", key=T,col = rev(RColorBrewer::brewer.pal(n=11, "RdYlBu")), margins=c(16,16),
           cexRow = 1.5,cexCol = 2.5,na.color = 'grey', scale = 'none',Rowv = 'none',Colv = 'none',cellnote = exclusions,notecol="black",notecex=2)
 dev.off()
