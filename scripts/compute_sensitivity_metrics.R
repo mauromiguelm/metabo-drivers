@@ -224,6 +224,64 @@ GR24_outliers_high$outliers <- ifelse(GR24_outliers_high$percent_change_GR<=  cu
 
 write.csv(GR24_outliers_high, "data/GR24_outliers_high.csv")
 
+
+# define groups R/S based on GR24 ----------------------------
+
+# create R/S groups based on GR24 results
+
+# check the CV for each pair of drug_cell and define CV.
+# if cv > 30  == sensitive
+# if cv <10   == resistant
+# if cv >= 10 | <=  30 == intermediate
+
+output_GR24 <- read.csv("data/outcomes_GR24.csv")
+
+GR24_RSgroups <- output_GR24 %>% dplyr::group_by(cell, Drug) %>% dplyr::summarize(variation = (sd(percent_change_GR)/mean(percent_change_GR))*100)
+
+GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>=30, "S",NA) 
+GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)<=20, "R",GR24_RSgroups$group) 
+GR24_RSgroups$group <- ifelse(abs(GR24_RSgroups$variation)>20 & abs(GR24_RSgroups$variation)<30, "I",GR24_RSgroups$group) 
+
+tmp <- output_GR24
+
+tmp$idx <- paste(tmp$Drug, tmp$cell, sep = "_")
+
+GR24_RSgroups$idx <- paste(GR24_RSgroups$Drug, GR24_RSgroups$cell, sep = "_")
+
+GR24_RSgroups <- dplyr::right_join(tmp, GR24_RSgroups[,c("idx", "group")], by= "idx")
+
+#save full RS groups
+
+write.csv(GR24_RSgroups,'data/outcomes_GR24_RSgroups.csv')
+
+#remove drug_conc with no effect
+
+GR24_outliers_low <- read.csv( "data/GR24_outliers_low.csv")
+
+GR24_outliers_high <- read.csv( "data/GR24_outliers_high.csv")
+
+filtered_data <- GR24_RSgroups
+
+low_outliers <- subset(GR24_outliers_low, outliers == 'low')
+
+rows_to_exclude <- paste(filtered_data$Drug,filtered_data$Final_conc_uM)%in% paste(low_outliers$Drug, low_outliers$Final_conc_uM)
+
+rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
+
+filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
+
+#remove too strong drug_concentrations
+
+rows_to_exclude <- ifelse(filtered_data$percent_change_GR<=cutoff_GR_max_growth_effect, T, F)
+
+rows_to_exclude <-ifelse(is.na(rows_to_exclude), T, rows_to_exclude)
+
+filtered_data[rows_to_exclude,"percent_change_GR"] <- NA
+
+#save filtered RS groups
+
+write.csv(filtered_data,'data/outcomes_GR24_RSgroups_filtered.csv')
+
 # plot phenotypic results -------------------------------------------------
 
 #plot results for GR24 as heatmap
