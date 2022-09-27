@@ -2,119 +2,49 @@
 
 # load packages and definitions -------------------------------------------
 
-path_data_file = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\clean_data_mean_hsa'
-path_fig = '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\figures_mean_hsa\\metabolomics'
-path_metabolomics_in <- '\\\\d.ethz.ch\\groups\\biol\\sysbc\\sauer_1\\users\\Mauro\\Cell_culture_data\\190310_LargeScreen\\metabolomicsData_processed'
-
-
-
-source("C:\\Users\\masierom\\polybox\\Programing\\Tecan_\\plate_converter.R")
-library(openxlsx)
-library(dplyr)
-library(rhdf5)
-library(ggplot2)
-library(parallel)
-library(proxy)
-library(KEGGREST)
-library(viridis)
-library(circlize)
-
-
-substrRight <- function(x, n){
-  
-  if(nchar(x)>n){
-    
-    #x = substr(x, nchar(x)-n+1, nchar(x))
-    
-    #paste0("/",x)
-    
-    return("")
-    
-  }else{
-    return(x)
-    
-  }
-  
-}
+library(openxlsx); library(dplyr); library(rhdf5); library(ggplot2); library(parallel); 
+library(proxy); library(KEGGREST); library(viridis); library(circlize); library(confluencer)
+library(ggrepel);
 
 #import cell metadata from depmap 
 
-setwd("C:\\Users\\mauro\\Documents\\phd_results\\metadata_cells")
-
-cell_metadata <- read.csv("metadata_cells_depmap.csv")
+cell_metadata <- read.csv("metadata/metadata_cells_depmap.csv")
 
 colnames(cell_metadata)[2] = 'cell'
 
 #import drug sensitity metrics
 
-setwd(path_data_file)
-
-data_GR50 <- read.csv("outcomes_growth_inhibition50.csv")
+data_GR50 <- read.csv("data/confluence/outcomes_growth_inhibition50.csv")
 
 #import kegg hsa compounds
 
-kegg_hsa_cpds = read.csv("kegg_hsa_cpds.csv")
-
-#import cell metadata from depmap 
-
-setwd("C:\\Users\\mauro\\Documents\\phd_results\\metadata_cells")
-
-cell_metadata <- read.csv("metadata_cells_depmap.csv")
-
-cell_metadata$cell = cell_metadata$cell_line_display_name
+kegg_hsa_cpds = read.csv("metadata/kegg_hsa_cpds.csv")
 
 #import metabolomics
 
-setwd(path_metabolomics_in)
+data<- rhdf5::h5read(file = "data/metabolomics/metabolomics.h5", '/data')
 
-dataContent<- h5ls("MM4_Mean mean_norm_DATA.h5")
+metadata <- rhdf5::h5read(file = "data/metabolomics/metabolomics.h5", '/metadata')
 
-data<- rhdf5::h5read(file = "MM4_Mean mean_norm_DATA.h5", '/data')
+metadata$X <- NULL
 
-ions <- rhdf5::h5read(file = "MM4_Mean mean_norm_DATA.h5", '/annotation')
+metadata$idx <- as.numeric(metadata$idx)
+
+metadata <- metadata[order(metadata$idx),]
+
+rownames(metadata) <- NULL
+
+ions <- rhdf5::h5read(file = "data/metabolomics/metabolomics.h5", '/ions')
 
 ions <- data.frame(ions)
 
-#filter ions == deprotonated
-
-ions <- ions %>% dplyr::group_by(ionIndex) %>% dplyr::arrange(score) %>% dplyr::slice(n()) #get deprotonated
-
-ions[ions$mzLabel == 'mz133.0145',"name"] <- "Malate"
-
-# keeg hsa kegg annotations
-
-lapply(ions$idKEGG, function(kegg_ids){
-  kegg_ids = strsplit(x = kegg_ids,split = " ")[[1]]
-  return(any(kegg_ids %in% kegg_hsa_cpds$x))
-}) -> is_kegg
-
-ions$name <-  ifelse(unlist(is_kegg)==T, ions$name,"")
-
-#import cleaned metadata
-
-setwd(paste(path_data_file,'metabolomics', sep = "//"))
-
-metadata <- read.csv("metadata_clean.csv")
-
 # impot R/S groups
 
-setwd(path_data_file)
+RS_groups <- read.csv("data/outcomes_GR24_RSgroups_filtered.csv"  )
 
-RS_groups <- read.csv("outcomes_GR24_RSgroups_filtered.csv"  )
+#define drugs in screen
 
-#import pathway defition
-
-setwd("C:\\Users\\masierom\\polybox\\Programing\\GSEA\\GSEA_2005_updatedMauro_20180914")
-
-source('GSEA.1.0.Mauro_20180914.R')
-
-load('DataSource.RData')  # This should be used as mock data.
-
-
-#define drugs from controls
-
-drugs_in_screen <- c(unique(metadata$drug)[!(unique(metadata$drug) %in% c("PBS", "DMSO"))])
-
+drugs_in_screen <- c(unique(metadata$drug)[!(unique(metadata$drug) %in% c("PBS", "DMSO","hct15Ctrl", "SolvCrtl","hct15Mtx","poolCtrl",'NA'))])
 
 # plot a metabolomics expected patterns in controls -------------------------------------
 
@@ -124,13 +54,15 @@ hexoseP_idx = which(ions$name=='Hexose')
 
 lactate_idx = which(ions$name=='Lactate')
 
-dmso_controls = which(metadata$drug=='DMSO' & metadata$conc=='367')
+dmso_controls = metadata[which(metadata$drug=='DMSO' & metadata$conc=='367'),'idx']
 
 data_control = data.frame(t(data[c(hexoseP_idx, lactate_idx),dmso_controls]))
 
-colnames(data_control) = c("hexose", 'lactate')
+data_control$idx = dmso_controls
 
-data_control = cbind(metadata[dmso_controls,], data_control)
+colnames(data_control)[1:2] = c("hexose", 'lactate')
+
+data_control = merge(data_control, metadata, by="idx")
 
 data_control = data_control[,c('cell',"hexose", 'lactate')] %>% group_by(cell) %>% summarise_all(list(mean, sd))
 
@@ -140,17 +72,15 @@ fit <- lm(scale(lactate_fn1)~scale(hexose_fn1),data_control)
 
 data_control$colors_lineage1 <- factor(data_control$lineage_1,labels = colorspace::diverge_hcl(length(unique(data_control$lineage_1))))
 
-setwd(path_fig)
-
 coefs <- coef(fit)
 b0 <- round(coefs[1], 2)
 b1 <- round(coefs[2],2)
 
 eqn <- bquote(italic(y) == .(b0) + .(b1)*italic(x))
 
-pdf('hexose_lactate_fit.pdf',width = 3,height = 3.5)
+pdf('figures/hexose_lactate_fit.pdf',width = 3,height = 3.5)
 
-plot(scale(lactate_fn1)~scale(hexose_fn1), data=data_control,
+plot(x = scale(data_control$hexose_fn1), y= scale(data_control$lactate_fn1),
      xlab='',ylab = '',col = data_control$colors_lineage1, pch=19,ylim = c(-2,2.5),xlim = c(-2.5,2))
 
 col_df = data_control%>% group_by(lineage_1) %>% slice(1)
@@ -165,16 +95,11 @@ text(-2.5, 2.0, eqn, pos = 4)
 
 dev.off()
 
-
-
 # calculating log2(FCs) for all data and for every drug.  --------
 
 #iterating over plates, cells, drug, and conc to calculate FCs
 
 metadata$cell_plate <- paste(metadata$cell, metadata$source_plate, sep = "_")
-
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
 
 lapply(unique(metadata$cell_plate), function(cell_plate_idx){
   #subset metadata to  drug & control groups
@@ -239,7 +164,7 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
     metab_fcs[,6] <- as.numeric(metab_fcs[,6])
     metab_fcs[,7] <- as.numeric(metab_fcs[,7])
 
-    write.csv(metab_fcs, paste0(cell_plate_idx,'.csv'))
+    write.csv(metab_fcs, paste0("data//metabolomics//log2fc//",cell_plate_idx,'.csv'))
 
   }else{
     NA
@@ -250,9 +175,7 @@ lapply(unique(metadata$cell_plate), function(cell_plate_idx){
 
 #map concentrations
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
+metab_fcs <- lapply(list.files("data//metabolomics//log2fc",pattern = "_P"),read.csv)
 
 metab_fcs <- do.call(rbind,metab_fcs)
 
@@ -271,19 +194,13 @@ metab_fcs <- do.call(rbind, metab_fcs)
 
 metab_fcs$cell_drug_conc <- paste(metab_fcs$cell_line,metab_fcs$drug,metab_fcs$conc)
 
-setwd(path_data_file)
+groups_to_keep <-read.csv('data//outcomes_GR24.csv')
 
-groups_to_keep <-read.csv('outcomes_GR24.csv')
-#
-# groups_to_keep <- subset(RS_groups, !is.na(percent_change_GR))
-#
 groups_to_keep$cell_drug_conc <- paste(groups_to_keep$cell,groups_to_keep$Drug,groups_to_keep$Final_conc_uM)
 
 #metab_fcs <- subset(metab_fcs, cell_drug_conc %in% unique(groups_to_keep$cell_drug_conc))
 
 #return a matrix of data (rows are samples, cols are ion features) and metadata (sample, growth inhibition)
-
-setwd(path_data_file)
 
 lapply(unique(metab_fcs$drug), function(drug_idx){
   #drug_idx = "Methotrexate"
@@ -300,209 +217,16 @@ lapply(unique(metab_fcs$drug), function(drug_idx){
 
   metadata <- merge(metadata, groups_to_keep[,c('cell_drug_conc','percent_change_GR')], by ='cell_drug_conc',all.x = T)
 
-  write.csv(metadata, paste("metadata",drug_idx,"log2fc.csv",sep ="_"))
-  write.csv(data, paste("data",drug_idx,"log2fc.csv",sep ="_"))
+  write.csv(metadata, paste("data//metabolomics/log2fc//metadata",drug_idx,"log2fc.csv",sep ="_"))
+  write.csv(data, paste("data//metabolomics/log2fc//data",drug_idx,"log2fc.csv",sep ="_"))
 })
-
-
-
-# export log2fc data for tdsR -------------------------------------
-
-#map concentrations
-
-setwd(paste0(path_data_file,"\\tdsr"))
-
-metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
-
-metab_fcs <- do.call(rbind,metab_fcs)
-
-metab_fcs$X <- NULL
-names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
-
-lapply(unique(metab_fcs$drug), function(drug_idx){
-  tmp <- subset(metab_fcs, drug == drug_idx)
-  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
-  return(tmp)
-}) -> metab_fcs
-
-metab_fcs <- do.call(rbind, metab_fcs)
-
-#remove concs wih no drug effect or too strong drug effect
-
-ions_of_interest <- which(ions$name %in%c("Asparagine", "Aspartate"))
-
-ions_of_interest <- ions[ions_of_interest,]
-
-metab_tds <- subset(metab_fcs, ionIndex %in% ions_of_interest$ionIndex & drug == "Asparaginase")
-
-write.csv(metab_tds, "metabolomics-tdsr.csv")
-
-# metabolome similarity across drugs_conc_cell lines ----------------------
-#TODO replace raw intensities with log2fc when calculating simil
-
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
-
-metab_fcs <- do.call(rbind,metab_fcs)
-
-metab_fcs$X <- NULL
-names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
-
-metab_fcs <- metab_fcs[metab_fcs$drug %in% unique(metab_fcs$drug)[1:10],]
-
-groups <- unique(paste(metab_fcs$cell, metab_fcs$drug, metab_fcs$conc,sep = '_'))
-
-groups <- t(combn(groups,m = 2))
-
-metab_fcs$groups <- paste(metab_fcs$cell, metab_fcs$drug, metab_fcs$conc,sep = '_')
-
-numWorkers <- 7
-
-cl <-makeCluster(numWorkers, type="PSOCK")
-
-calculate_slope_basal <- function(idx, metadata_, groups_) {
-  #idx = 1
-  meta_g1 <- metadata_[metadata_$groups %in% groups_[idx,1],]
-  meta_g2 <- metadata_[metadata_$groups %in% groups_[idx,2],]
-
-  data_g1 <- meta_g1$log2fc
-  data_g2 <- meta_g2$log2fc
-
-  #TODO release a warning in case data is empty
-
-  #average groups
-
-  #measures of similarity cosine
-
-  d_cos <- proxy::simil(rbind(data_g1,data_g2),method = 'cosine')[1]
-  #measures of similarity pearson
-
-  d_pearson <- cor(data_g1,data_g2,method = 'pearson')
-  #measures of similarity euclidean
-
-  d_euc <- proxy::simil(rbind(data_g1,data_g2),method = 'euclidean')[1]
-  #measures of similarity Hamman
-
-  d_ham <- proxy::simil(rbind(data_g1,data_g2),method = 'Hamman')[1]
-
-  #measures of similarity spearman
-
-  d_spe <- cor(data_g1,data_g2,method = 'spearman')
-
-  return(data.frame(g1 = groups_[idx,1], g2 = groups_[idx,2],
-                    cosine = d_cos,
-                    pearson = d_pearson,
-                    euclidean = d_euc,
-                    hamman = d_ham,
-                    spearman = d_spe))
-
-}
-
-system.time({
-  results <- parallel::parLapply(cl=cl,1:nrow(groups), calculate_slope_basal, metadata_=metab_fcs, groups_ = groups)
-})
-
-parallel::stopCluster(cl)
-
-rm(cl)
-# save results
-
-results <- do.call(rbind, results)
-
-setwd(paste0(path_data_file,"\\metabolomics","\\similarity"))
-
-write.csv(results, 'similarity_results_log2fc.csv')
-
-# plot results
-
-setwd(paste0(path_data_file,"\\metabolomics","\\similarity"))
-
-results <- read.csv('similarity_results_log2fc.csv')
-
-results <- subset(results,grepl(results[,2],pattern = 'Erlotinib'))
-
-results <- subset(results,grepl(results[,3],pattern = 'Erlotinib'))
-
-tmp <- results
-
-tmp2 <- results
-
-tmp2$g2 <- tmp$g1
-tmp2$g1 <- tmp$g2
-
-tmp <- rbind(tmp, tmp2)
-
-wide_result <- tidyr::spread(tmp[,c('g1','g2','cosine')],'g2','cosine',fill = 1)
-
-rownames(wide_result) <- wide_result$g1
-
-wide_result$g1 <- NULL
-col <- viridis::viridis(999)
-
-setwd(path_fig)
-library(heatmaply)
-
-png('heatmap_cos_sim.png',width = 1000,height = 1000)
-
-heatmaply(as.matrix(wide_result))
-plt <- gplots::heatmap.2(as.matrix(wide_result),symm = T,trace = 'none', col=col)
-dev.off()
-
-# plot one drug
-
-# make a correlation network
-
-require(xts)
-require(quantmod)
-require(igraph)
-# cor_mat<- matrix( runif(100), nr=10 )
-
-cor_mat <- wide_result
-
-cor_mat[ lower.tri(cor_mat, diag=TRUE) ]<- 0
-
-cor_mat[ abs(cor_mat) < 0.6]<- 0
-
-graph <- graph.adjacency(abs(cor_mat)>0.6, mode="upper",weighted = T)
-
-#E(graph)$weight<-t(cor_mat)[abs(t(cor_mat))>0.7]
-
-E(graph)$weight<-t(cor_mat)[abs(t(cor_mat))>0.6]
-
-v_names <- sapply(strsplit(V(graph)$name,split = '_'),"[[",2)
-
-discrete_colors <- viridis::viridis(length(unique(v_names)))
-
-v_colors <- factor(v_names,labels = discrete_colors)
-
-V(graph)$color <- v_colors
-
-graph$layout <- layout.circle
-
-map <- data.frame(v_names,v_colors)
-
-map <- map[!duplicated(map[,1]),]
-
-graph$layout <- layout.fruchterman.reingold
-
-png('corr_network.png',width=500)
-plot(decompose.graph(graph)[[which.max(sapply(decompose.graph(graph), vcount))]],frame=T,
-     edge.arrow.size=0.5,
-     vertex.label.cex=0.7,vertex.size=3, col = V(graph)$color)
-legend('topleft',title="Colors", cex=0.75, pch=16,
-       col=map[,2],
-       legend=map[,1], ncol=2)
-dev.off()
 
 
 # association GR24 with log2fc --------
-# lm(metab~GR50) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
+# lm(metab~GR24) across all cell lines and concentrations that we have filtered strong effects/unnefective concentrations
 # import log2fc data
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
+metab_fcs <- lapply(list.files(path = 'data//metabolomics//log2fc',pattern = "_P"),read.csv)
 
 metab_fcs <- do.call(rbind,metab_fcs)
 
@@ -606,11 +330,9 @@ rm(cl)
 
 #save results bootstrap
 
-setwd(paste0(path_data_file,"\\metabolomics\\log2fc"))
-
 names(results) <- unique(metab_fcs$drug)
 
-save(results,file = 'bootstrap_results.Rdata')
+save(results,file = 'data//metabolomics//log2fc//bootstrap_results.Rdata')
 
 #report bootstrap confidence interval as table
 
@@ -639,9 +361,7 @@ bootstrap_ci <- do.call(rbind, bootstrap_ci)
 
 #save confidence interval results
 
-setwd(paste0(path_data_file,"\\metabolomics\\log2fc"))
-
-write.csv(bootstrap_ci,file = 'confidence_intervals_from_permutation_1.csv')
+write.csv(bootstrap_ci,file = 'data//metabolomics//log2fc//confidence_intervals_from_permutation_1.csv')
 
 #calculate metrics for each drug_ions of log2fc vs. GR24
 
@@ -655,7 +375,6 @@ lapply(unique(paste(metab_fcs$drug,metab_fcs$ionIndex, sep = "_")),function(drug
 
   tmp$conc <- tmp %>% dplyr::group_by(concentration) %>%  dplyr::group_indices(concentration)
   tmp$cell_conc <- paste(tmp$cell_line, tmp$conc,sep = "_")
-
 
   tmp_growth_metrics <- subset(RS_groups, Drug == strsplit(drug_ion, split = "_")[[1]][1], select=c("cell",'Final_conc_uM', 'percent_change_GR'))
 
@@ -702,15 +421,11 @@ colnames(slope_metabolite_effect_on_growth) <- c('drug', 'ionIndex', 'slope', 'r
 
 #save associations
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-write.csv(slope_metabolite_effect_on_growth, 'metabolite_GR24_association.csv')
+write.csv(slope_metabolite_effect_on_growth, 'data//metabolomics//log2fc//metabolite_GR24_association.csv')
 
 #select the ions that survived permutation thresohld
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-df <- read.csv('metabolite_GR24_association.csv')
+df <- read.csv('data//metabolomics//log2fc//metabolite_GR24_association.csv')
 
 lapply(unique(df$drug), function(drug_idx){
 
@@ -745,9 +460,7 @@ colnames(df)[1] <- "idx"
 
 #save associations
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-write.csv(df, 'metabolite_GR24_association_survivingCI.csv')
+write.csv(df, 'data//metabolite_GR24_association_survivingCI.csv')
 
 # baseline vs drug treated ion compairison --------------------------------
 
@@ -814,9 +527,7 @@ colnames(basal_associations) <- c('drug', 'ionIndex', 'slope', 'r2', 'adj-r2', '
 
 #save associations
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-write.csv(basal_associations, 'basal_association.csv')
+write.csv(basal_associations, 'data//basal_association.csv')
 
 # Determining half effect concentration for relevant ions -----------------
 
@@ -824,17 +535,13 @@ write.csv(basal_associations, 'basal_association.csv')
 
 #read associations
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-df <- read.csv('metabolite_GR24_association_survivingCI.csv')
+df <- read.csv('data//metabolite_GR24_association_survivingCI.csv')
 
 df$X <- NULL
 
 #import full GR24 data
 
-setwd(paste0(path_data_file))
-
-outcomes_GR24 <- read.csv("outcomes_GR24.csv")
+outcomes_GR24 <- read.csv("data//outcomes_GR24.csv")
 
 #for each ion that is associated with growth, use all concentrations
 #to determine IC50
@@ -973,21 +680,17 @@ drug_cell_fc <- do.call(rbind, drug_cell_fc)
 
 #save results
 
-setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
+write.csv(drug_cell_fc, "data//drug_cell_fc.csv")
 
-write.csv(drug_cell_fc, "drug_cell_fc.csv")
-
-write.csv(drug_cell_ED50,"drug_cell_ED50.csv")
+write.csv(drug_cell_ED50,"data//drug_cell_ED50.csv")
 
 #TODO save models, so I can use them later
 
 #read results
 
-setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
+drug_cell_fc <- read.csv("data//drug_cell_fc.csv")
 
-drug_cell_fc <- read.csv("drug_cell_fc.csv")
-
-drug_cell_ED50 <- read.csv("drug_cell_ED50.csv")
+drug_cell_ED50 <- read.csv("data//drug_cell_ED50.csv")
 
 #gap fill NA with high concentration
 
@@ -999,11 +702,6 @@ lapply(unique(drug_cell_fc$idx), function(idx){
   
   return(sub_data)
 }) -> tmp
-
-
-setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
-
-library(ggplot2)
 
 lapply(tmp, function(sub_data){
   #sub_data <- tmp[[600]]
@@ -1033,7 +731,7 @@ lapply(tmp, function(sub_data){
       geom_jitter(aes(fill=name,group=cell),size=3,shape=21)+
       ylab('ED50')+
       ggtitle(paste(sub_fc$drug, sub_fc$name, sep = "_"))-> plot
-    ggsave(filename = paste(sub_fc$drug,metab_name,".png", sep ="_"), plot = plot)
+    ggsave(filename = paste0("figures//",sub_fc$drug,metab_name,".png"), plot = plot)
     
   }
   
@@ -1045,62 +743,23 @@ EC50_statistics <- data.frame(do.call(rbind,tmp))
 
 colnames(EC50_statistics) <- c("association_index","EC50_FC")
 
-setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
-
-write.csv(EC50_statistics, "statistics_EC50.csv")
-
-library(ggplot2)
-
-#plot fitting
-
-plot(0,0,xlim = c(0,5),ylim = c(0,1),type = "n",xlab='Dose',ylab='Effect')
-cols = rev(heat.colors(length(models)))
-dose=seq(0,5,0.1)
-
-for(x in 1:length(models_GR24)){
-  print(x)
-
-  model = models_GR24[[x]]
-
-  if(class(model)=='drc'){
-    tmp <- predict(model, data.frame(dose=dose),
-                   interval = "prediction")
-    lines(dose, tmp[,1],col= 'blue')
-
-  }
-
-  model = models_log2fc[[x]]
-
-  if(class(model)=='drc'){
-    tmp <- predict(model, data.frame(dose=dose),
-                   interval = "prediction")
-    lines(dose, tmp[,1],col= 'red')
-
-  }
-}
-
-
+write.csv(EC50_statistics, "data\\statistics_EC50.csv")
 
 # combine all metrics into one matrix -------------------------------------
 
-
 #read EC50 results
 
-setwd(paste(path_data_file, "GI50_associations", sep ="\\"))
+drug_cell_fc <- read.csv("data\\drug_cell_fc.csv")
 
-drug_cell_fc <- read.csv("drug_cell_fc.csv")
+drug_cell_ED50 <- read.csv("data\\drug_cell_ED50.csv")
 
-drug_cell_ED50 <- read.csv("drug_cell_ED50.csv")
-
-EC50_statistics <- read.csv("statistics_EC50.csv")
+EC50_statistics <- read.csv("data\\statistics_EC50.csv")
 
 EC50_statistics$X <- NULL
 
 #select the ions that survived permutation thresohld
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-df <- read.csv('metabolite_GR24_association_survivingCI.csv')
+df <- read.csv('data\\metabolite_GR24_association_survivingCI.csv')
 
 df$X <- NULL
 
@@ -1110,7 +769,7 @@ colnames(df)[4:8] <- paste("DMA", colnames(df)[4:8], sep = "_")
 
 df <- merge(df, ions, by='ionIndex')
 
-write.csv(df, file = 'metabolite_GR24_association_survivingCI_ionLabel.csv')
+write.csv(df, file = 'data\\metabolite_GR24_association_survivingCI_ionLabel.csv')
 
 # combine log2fc/GI50 association with basal/treated metabolome association
 
@@ -1118,9 +777,7 @@ df$association_index = df$idx
 
 df$drugion <- paste(df$drug, df$ionIndex)
 
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-basal_associations <- read.csv('basal_association.csv')
+basal_associations <- read.csv('data\\basal_association.csv')
 
 basal_associations$X <- NULL
 
@@ -1142,14 +799,11 @@ df$GR_independence <- ifelse(df$EC50_FC >1, T, F)
 
 #save full with all 3 metrics
 
-setwd(path_data_file)
-write.csv(df, "drug_metabolite_associations.csv")
+write.csv(df, "data\\drug_metabolite_associations.csv")
 
 #generate statistics as results per group
 
-setwd(path_data_file)
-df <- read.csv("drug_metabolite_associations.csv")
-
+df <- read.csv("data\\drug_metabolite_associations.csv")
 
 stats_associations <-  xtabs(~Basal_effect+DMA+GR_independence, df)
 
@@ -1162,9 +816,7 @@ stats_count_per_ion <- df %>% group_by(name) %>% summarize(count = n())
 
 #import results
 
-setwd(path_data_file)
-
-df <- read.csv("drug_metabolite_associations.csv")
+df <- read.csv("data\\drug_metabolite_associations.csv")
 df$X = NULL
 
 lapply(unique(df$drug), function(drug){
@@ -1177,8 +829,6 @@ lapply(unique(df$drug), function(drug){
   
   
   tmp <- tmp[,c("name","mzLabel","EC50_FC","DMA_slope","basal_slope")]
-  
-  #tmp$name <- as.character(sapply(tmp$name, substrRight, 25))
   
   tmp$name <- paste(tmp$name, paste0("(",tmp$mzLabel,")"), sep = " ")
   
@@ -1214,7 +864,6 @@ lapply(unique(df$drug), function(drug){
   
   tmp$value <- ifelse(tmp$metric=="log2(GR ind)", 2,tmp$value)
   
-  setwd(paste0(path_fig, "\\association_heatmap_by_drug"))
   ggplot(tmp, aes(metric, Metabolite))+
     geom_point(aes(size = abs(value), fill = color), alpha = 0.75, shape = 21) + 
     scale_size_continuous(limits = c(0,round(max(abs(tmp$value)))+1),breaks = round(seq(0,round(max(abs(tmp$value)))+1,length.out=5))) + 
@@ -1228,10 +877,10 @@ lapply(unique(df$drug), function(drug){
           legend.position = "right")+
     scale_fill_identity(aes(color)) -> plt
   
-  ggsave(paste(drug, "h1.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.34,width = 7, limitsize = F)
-  ggsave(paste(drug, "h0.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.4,width = 7, limitsize = F)
-  ggsave(paste(drug, "h2.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.5,width = 7, limitsize = F)
-  ggsave(paste(drug, "h3.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.3,width = 9, limitsize = F)
+  ggsave(paste0("figures\\",drug, "_h1.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.34,width = 7, limitsize = F)
+  ggsave(paste0("figures\\",drug, "_h0.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.4,width = 7, limitsize = F)
+  ggsave(paste0("figures\\",drug, "_h2.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.5,width = 7, limitsize = F)
+  ggsave(paste0("figures\\",drug, "_h3.pdf"),plot = plt,height = length(unique(tmp$Metabolite))*0.3,width = 9, limitsize = F)
   
   #create a legend for GR independence
   
@@ -1241,7 +890,7 @@ lapply(unique(df$drug), function(drug){
 
   GRI <- round(GRI,0)
   
-  pdf(paste(drug, "legend.pdf")) 
+  pdf(paste0("data\\",drug, "_legend.pdf")) 
   plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
   legend(x = 0, y = 1, fill = GRI_col, legend = GRI, title = "log2(GR independence)")
   dev.off()
@@ -1254,8 +903,6 @@ lapply(unique(df$drug), function(drug){
 #number of associations per metabolite with diferent drugs (plot)
 
 tmp <- df %>% group_by(ionIndex) %>% dplyr::summarise(count_metab = n())
-
-setwd(path_fig)
 
 ggplot(tmp, aes(x=count_metab, fill = factor(count_metab)))+
   geom_point(stat ="count", size = 4)+
@@ -1271,146 +918,11 @@ ggplot(tmp, aes(x=count_metab, fill = factor(count_metab)))+
   scale_x_continuous(limits = c(0,12), breaks = seq(0,12,4))+
   theme(legend.position = "none") -> plt
 
-ggsave("number_metabs_associated_with_number_drugs.pdf",plt,device = "pdf",width=5, height=4,scale = 0.9)
-
-# #sankey plot of positive associations -----------------------------------
-
-#first col is drug, second is metab_pathway or any other meta for metabolites
-
-library(networkD3)
-library(dplyr)
-library(tidyr)
-
-#prep data for individual drug metab assoation
-
-df_sankey <- df[,c('drug','name','DMA_slope')]
-
-names(df_sankey) <- c("name", 'year1','value')
-
-df_sankey$groups <- paste(df_sankey$name, df_sankey$year1)
-
-df_sankey <- df_sankey[!df_sankey$year1 %in% df_sankey$name,] #remove metabolites with drug names
-
-#create links and nodes
-
-links <-
-  df_sankey[,c(1,2)] %>%mutate(row = row_number()) %>%  # add a row id
-  pivot_longer(-row, names_to = "column", values_to = "source") %>%  # gather all columns
-  mutate(column = match(column, names(df))) %>%  # convert col names to col ids
-  group_by(row) %>%
-  mutate(target = lead(source, order_by = column)) %>%  # get target from following node in row
-  ungroup() %>%
-  filter(!is.na(target))  # remove links from last column in original data
-
-links$groups <- paste(links$source, links$target)
-
-links <- merge(links, df_sankey[,c('groups',"value")],by="groups")
-
-nodes <- data.frame(name = unique(c(links$source, links$target)))
-nodes$label <- sub('_[0-9]*$', '', nodes$name) # remove column id from node label
-
-links$source_id <- match(links$source, nodes$name) - 1
-links$target_id <- match(links$target, nodes$name) - 1
-#links$value <- abs(links$value)
-
-#plot
-
-sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
-              Target = 'target_id', Value = 'value', NodeID = 'label',height = 4000,width = 1000)
-
-
-# #sankey plot on pathways ------------------------------------------------
-
-#prep data for individual drug to pathway association
-
-#expand kegg id
-
-df_sankey <- df[,c('drug','idKEGG')]
-
-df_sankey <- tidyr::separate_rows(df_sankey,idKEGG, convert = TRUE, sep = ' ')
-
-df_sankey <- subset(df_sankey,!grepl("^\\s*$", idKEGG))
-
-# relate kegg compound ID to pathway
-
-map_pathway_to_cpds <- data.frame(do.call(rbind,strsplit(temp, "\t")))
-
-map_pathway_to_cpds$X1 <- gsub("path:","",map_pathway_to_cpds$X1)
-
-hsa_metab_pathways <- data.frame(path_names = keggGet('path:hsa01100')[[1]][['REL_PATHWAY']])
-
-which_pathways <- sapply(map_pathway_to_cpds, "%in%",rownames(hsa_metab_pathways))
-
-map_pathway_to_cpds <- map_pathway_to_cpds[which_pathways,]
-
-path_names <- lapply(df_sankey$idKEGG,function(idx){
-  #idx =  "C00112"
-  which_path <- apply(map_pathway_to_cpds,1,"%in%",idx)
-
-  which_path <- apply(which_path, 1, any)
-
-  if(sum(which_path)>0){
-
-
-    path_names <- hsa_metab_pathways[rownames(hsa_metab_pathways)%in%map_pathway_to_cpds[which_path,1],]
-    return(paste(path_names, collapse = "_"))
-    }
-  })
-
-df_sankey$path_names <- path_names
-
-df_sankey <- tidyr::separate_rows(df_sankey,path_names, convert = TRUE, sep = '_')
-
-df_sankey <- df_sankey[,c('drug','path_names')]
-
-names(df_sankey) <- c("name", 'year1')
-
-library(tidyr)
-library(dplyr)
-#create links and nodes
-
-links <-
-  df_sankey %>%mutate(row = row_number()) %>%  # add a row id
-  pivot_longer(-row, names_to = "column", values_to = "source") %>%  # gather all columns
-  mutate(column = match(column, names(df))) %>%  # convert col names to col ids
-  group_by(row) %>%
-  mutate(target = lead(source, order_by = column)) %>%  # get target from following node in row
-  ungroup() %>%
-  filter(!is.na(target))  # remove links from last column in original data
-
-nodes <- data.frame(name = unique(c(links$source, links$target)))
-nodes$label <- sub('_[0-9]*$', '', nodes$name) # remove column id from node label
-
-links$source_id <- match(links$source, nodes$name) - 1
-links$target_id <- match(links$target, nodes$name) - 1
-links$value <- 1
-
-library(networkD3)
-
-#plot
-
-sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
-              Target = 'target_id', Value = 'value', NodeID = 'label')
-
-
-
-# #single ion count per pathay --------------------------------------------
-
-tmp <- df_sankey %>% group_by(name, year1) %>% summarise(count = n())
-
-tmp <- subset(tmp, count >=4)
-
-library(ggplot2)
-ggplot(tmp, aes(y= name, x= year1, fill = count))+
-  geom_tile()+
-  theme(axis.text.x = element_text(angle = 45,hjust =1))
-
-
+ggsave("figures//number_metabs_associated_with_number_drugs.pdf",plt,device = "pdf",width=5, height=4,scale = 0.9)
 
 #clirclize plot of top 10 associations ---------------------------------
 
-setwd(path_data_file)
-df <- read.csv("drug_metabolite_associations.csv")
+df <- read.csv("data\\drug_metabolite_associations.csv")
 
 df <- df[ifelse(df$name =="",F,T),]  #remove non annotated
 
@@ -1418,16 +930,19 @@ drugs_to_plot <- df %>% group_by(drug) %>% filter(n()>=5)
 
 df <- df[df$drug %in% drugs_to_plot$drug,] #remove drugs with less than 5 associations
 
+#get the top 10 DMA associations
+
 df <- df %>% group_by(drug) %>% dplyr::arrange(abs(DMA_slope)) %>% dplyr::slice_tail(n=10)
 
 df <- df %>% group_by(drug) %>%dplyr::arrange(abs(DMA_slope)) %>%  dplyr::mutate(slope_norm = c(10:1)[1:n()])
+
+#define boundaries
 
 df$basal_slope <- ifelse(df$basal_slope >=2,2, df$basal_slope)
 df$basal_slope <- ifelse(df$basal_slope <=c(0),-0, df$basal_slope)
 
 df$DMA_slope <- ifelse(df$DMA_slope >=2,2, df$DMA_slope)
 df$DMA_slope <- ifelse(df$DMA_slope <=c(-2),-2, df$DMA_slope)
-
 
 #shorten the ion name so it fits in plotting
 
@@ -1439,8 +954,6 @@ df[which(df$mzLabel == "mz363.0170"),'name'] <- "6-Thio-IMP" #6-Thioinosine-5''-
 
 df[which(df$mzLabel == "mz613.1403"),'name'] <- "CMP-NeuNAc" #Cytidine monophosphate N-acetylneuraminic acid
 
-#df$name <- as.character(sapply(df$name, substrRight, 25))
-
 df$name <- paste(df$name, paste0("(",df$mzLabel,")"), sep = " ")
 
 df$EC50_FC <- log2(df$EC50_FC)
@@ -1450,9 +963,7 @@ df$EC50_FC <- ifelse(df$EC50_FC <c(-4),-4, df$EC50_FC)
 
 # merge MoA 
 
-setwd(path_data_file)
-
-drug_metadata <- read.csv("drug_metadata_moa.csv")
+drug_metadata <- read.csv("data\\drug_metadata_moa.csv")
 
 colnames(drug_metadata)[5] <- 'drug'
 
@@ -1464,9 +975,7 @@ df$x=0
 
 df$color <- ifelse(df$DMA_slope<0, "#FF0000", "green4")
 
-setwd(path_fig)
-
-png("association_GR24_metabolites.png",width = 7000,height = 7000,res = 700)
+png("figures//association_GR24_metabolites.png",width = 7000,height = 7000,res = 700)
 
 x1 <- x2 <- y1 <-y2 <-0.5
 
@@ -1552,23 +1061,18 @@ col3 = colorRamp2(c(-GRI_max, 0, GRI_max), c("darkgreen", "grey", viridis(100)[1
 df$color3 <- col3(df$EC50_FC)
 
 
-pdf(paste("circle-legend-GRI.pdf")) 
+pdf(paste("figures\\circle-legend-GRI.pdf")) 
 plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
 legend(x = 0, y = 1, fill = col3(seq(-GRI_max,GRI_max,1)),legend = seq(-GRI_max,GRI_max,1), title = "log2(GR independence)")
 dev.off()
 
 
-
-
-pdf(paste("circle-legend-basal.pdf")) 
+pdf(paste0("figures\\circle-legend-basal.pdf")) 
 plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
 legend(x = 0, y = 1, fill = col2(seq(0,2,0.25)),legend = seq(0,2,0.25), title = "Basal effect")
 dev.off()
 
-
-
 # plot summary of ED50
-
 
 df$PASS <-  ifelse(df$EC50_FC>0,T,F)
 
@@ -1579,103 +1083,10 @@ ggplot(EC50_stats_by_drug, aes(x=reorder(drug, PASS.percentage),y=PASS.percentag
   geom_bar(stat = 'identity')+
   theme(axis.text.x = element_text(angle = 45,hjust = 1, vjust = 1)) -> plt
 
-ggsave(paste0(path_fig,"","\\GI50_associations\\", "fraction_GI50.pdf"),plot = plt,  width = 25, height = 15, units = "cm")
+ggsave(paste0("figures\\", "fraction_GI50.pdf"),plot = plt,  width = 25, height = 15, units = "cm")
   
-
-# plot one interesting association ---------------------------------------------
-#doi = drug of interest
-#iot = ion of interest
-
-doi <- "Decitabine"
-iot <- 394
-
-tmp2 <- subset(metab_fcs, ionIndex == iot & drug == doi)
-
-lapply(unique(tmp2$drug), function(drug_idx){
-  tmp <- subset(tmp2, drug == drug_idx)
-  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
-  return(tmp)
-}) -> tmp2
-
-tmp2 <- do.call(rbind, tmp2)
-
-tmp2$experiment <- paste(tmp2$cell_line, tmp2$drug,tmp2$conc, sep = "_")
-
-tmp_growth_metrics <- subset(RS_groups, select=c('Drug',"cell",'Final_conc_uM', 'percent_change_GR'))
-
-tmp_growth_metrics <- subset(tmp_growth_metrics, !is.na(percent_change_GR))
-
-tmp_growth_metrics$experiment <- paste(tmp_growth_metrics$cell,tmp_growth_metrics$Drug, tmp_growth_metrics$Final_conc_uM,sep = "_")
-
-tmp2 <- merge(tmp2, tmp_growth_metrics[,c('experiment', "percent_change_GR")], by = "experiment")
-
-(ggplot(tmp2, aes(y=log2fc,x=log10(percent_change_GR), label = cell_line))+
-  geom_point(col = 'red')+
-  ggrepel::geom_text_repel(cex = 3)+
-  theme_bw()+
-  geom_smooth(method='lm', formula= y~x) -> plt)
-
-plt <- plt+theme(axis.title =element_text(size=15))
-
-setwd(paste(path_fig,'specific_examples', sep = "\\"))
-
-ggsave(filename = paste(doi,iot,'.png', sep = "_"), plt,width = 4,height = 3.5,dpi = 300)
-
-# dependency on concentration
-#do increasing concentration change levels of these metabolites
-
-ggplot(tmp2, aes(x = factor(conc), y=cell_line, fill = log2fc))+
-  geom_tile()+
-  scale_fill_gradient2(low = "red",mid = 'white', high = "blue",midpoint = 0)+
-  theme_bw()+
-  theme(axis.title =element_text(size=15), axis.text = element_text(size = 15))
-
-# plot associations wiht basal metabolism
-
-doi <- "Decitabine"
-iot <- 394
-
-RSgroup_sub <- subset(RS_groups, Drug == doi & !is.na(percent_change_GR))
-
-metadata_doi <- subset(metadata, drug == doi)
-
-metadata_doi$conc <- metadata_doi %>% dplyr::group_by(conc) %>%  dplyr::group_indices(conc)
-
-metadata_doi <- subset(metadata_doi, conc %in% unique(RSgroup_sub$Final_conc_uM))
-
-metadata_control <- subset(metadata, cell %in% unique(metadata_doi$cell) & source_plate == unique(metadata_doi$source_plate) & drug == 'DMSO' &
-                             conc == 367)
-
-data_mean_control <- data[iot,metadata_control$idx]
-
-data_mean_control <- cbind(metadata_control,data.frame("intensities" = data_mean_control))
-
-data_mean_control <- data_mean_control %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = median(intensities))
-
-data_mean_drug <- data[iot,metadata_doi$idx]
-
-data_mean_drug <- cbind(metadata_doi,data.frame("intensities" = data_mean_drug))
-
-data_mean_drug <- data_mean_drug %>% dplyr::group_by(cell) %>% dplyr::summarize(mean_ion = median(intensities))
-
-comb_data <- merge(data_mean_control, data_mean_drug, by = 'cell')
-
-comb_data$perfect_fit <- comb_data$mean_ion.x
-
-(ggplot(comb_data, aes(x=log10(mean_ion.x),y=log10(mean_ion.y), label = cell))+
-    geom_point(col = 'red')+
-    ggrepel::geom_text_repel(cex = 3)+
-    theme_bw()+
-    geom_abline(slope = 1, intercept = 0, col = 'red',linetype = "dashed")+
-    geom_smooth(method='lm', formula= y~x) -> plt)
-
-
 # plot summary all associations in one plot -----------------------------
 
-
-library(ggrepel)
-
-setwd(path_fig)
 df$drugmetab <- paste(df$drug, df$name)
 
 df$drugmetab = ifelse(df$drug %in% c('Decitabine', 'BPTES'), df$drugmetab,"")
@@ -1693,297 +1104,4 @@ ggplot(df, aes(x = rank(DMA_slope) ,y=DMA_slope, label = drugmetab))+
                     panel.background = element_blank(), axis.line = element_line(colour = "black"))->plt
 
 
-ggsave(filename = 'rankedDMA.pdf',plt,width =3,height = 2.6)
-
-
-# R/S/I clustergram -------------------------------------------------------
-
-# import R/S/I data
-setwd(path_data_file)
-
-RS_output <- read.csv("outcomes_GR24_RSgroups_filtered.csv")
-
-#import FC data
-
-setwd(paste0(path_data_file,"\\metabolomics","\\log2fc"))
-
-metab_fcs <- lapply(list.files(pattern = "_P"),read.csv)
-
-metab_fcs <- do.call(rbind,metab_fcs)
-
-metab_fcs$X <- NULL
-names(metab_fcs) <- c("cell_line","source_plate",'drug','concentration','ionIndex','log2fc','pvalue')
-
-lapply(unique(metab_fcs$drug), function(drug_idx){
-  tmp <- subset(metab_fcs, drug == drug_idx)
-  tmp$conc <- tmp %>%  dplyr::group_indices(concentration)
-  return(tmp)
-}) -> metab_fcs
-
-metab_fcs <- do.call(rbind, metab_fcs)
-
-lapply(unique(RS_output$Drug), function(drug_idx){
-  #drug_idx = "Erlotinib"
-  RS_sub <- subset(RS_output, Drug == drug_idx & !is.na(percent_change_GR))
-
-  for(groups_idx in list("R",c("S","I"))){
-
-    #groups_idx <- c('S','I')
-    groups_idx <- c('R')
-    RS_sub_group <- subset(RS_sub, group %in% groups_idx)
-
-    data_sub <- subset(metab_fcs, cell_line %in% RS_sub_group$cell & conc %in% RS_sub_group$Final_conc_uM)
-
-    fcs_sub <- subset(metab_fcs, drug == drug_idx & conc %in% RS_sub_group$Final_conc_uM & cell_line %in% RS_sub_group$cell)
-
-    #remove lowest concentration
-
-    fcs_sub <- subset(fcs_sub, conc != 1)
-
-    #prepare data as wide matrix format for clustering
-
-    my_palette <- colorRampPalette(c("red", "white", "green"))(n = 299)
-
-    fcs_sub$cell_conc <- paste(fcs_sub$cell_line, fcs_sub$conc, sep = "_")
-
-    fcs_sub$log2fc <- ifelse(fcs_sub$log2fc < -2, -2, fcs_sub$log2fc)
-    fcs_sub$log2fc <- ifelse(fcs_sub$log2fc >  2,  2, fcs_sub$log2fc)
-
-    fcs_sub <- subset(fcs_sub, pvalue < 0.05)
-
-    fcs_sub <- fcs_sub %>% group_by(ionIndex) %>%  filter(n() >= 6)
-
-    fcs_sub <- tidyr::pivot_wider(fcs_sub, names_from = cell_conc, values_from = log2fc,id_cols = ionIndex,values_fill = 0)
-
-    tmp_ions <- ions
-
-    tmp_ions <- tmp_ions %>% dplyr::group_by(ionIndex) %>% slice(1)
-
-    my_row_names <- tmp_ions[as.numeric(fcs_sub$ionIndex), "name"]$name
-
-    fcs_sub$ionIndex <-NULL
-
-    rownames(fcs_sub) <- my_row_names
-
-    heatmaply::heatmaply(as.matrix(fcs_sub),
-              density.info="none",  # turns off density plot inside color legend
-              trace="none",          # turns off trace lines inside the heat map
-              col = my_palette,na.rm = T,
-              show_dendrogram = c(F, F),
-              limits = c(-2,2))
-
-    heatmaply::heatmaply(as.matrix(fcs_sub),
-                         density.info="none",  # turns off density plot inside color legend
-                         trace="none",          # turns off trace lines inside the heat map
-                         col = my_palette,na.rm = T,
-                         file = paste(drug_idx, groups_idx,'.html', sep = "_"))
-
-
-    heatm(as.matrix(fcs_sub),
-                      density.info="none",  # turns off density plot inside color legend
-                      trace="none",          # turns off trace lines inside the heat map
-                      col = my_palette,na.rm = T
-                      )
-
-
-  }
-
-
-
-
-
-
-
-})
-
-
-# export log2fc data for cytoscape ----------------------------------------
-
-tmp <- metab_fcs
-
-tmp <- subset(tmp, drug == 'Methotrexate' & cell_line == "SW620" & conc == 5, select = c('ionIndex', "log2fc",'pvalue'))
-
-ions_sub <- ions[,c('ionIndex','idKEGG')]
-
-ions_sub <- tidyr::separate_rows(ions_sub,idKEGG, convert = TRUE, sep = ' ')
-
-ions_sub <- subset(ions_sub,!grepl("^\\s*$", idKEGG))
-
-ions_sub <- ions_sub %>% dplyr::group_by(idKEGG) %>% dplyr::slice(1)
-
-tmp <- merge(tmp, ions_sub,by='ionIndex')
-
-write.csv(file = 'example_for_metabscape.csv', x = tmp[,c('idKEGG', 'log2fc','pvalue')])
-
-
-
-
-# RS groups enrichment ---------------------------------------------------------------
-
-# #calculate pathway enrichment for R/S groups ------------------------------------
-
-lapply(unique(RS_groups$Drug), function(drug_idx){
-  #drug_idx = 'BPTES'
-  print(drug_idx)
-  RS_sub <- subset(RS_groups, Drug == drug_idx & !is.na(percent_change_GR))
-
-  res_sub <- subset(RS_sub, group == 'R' )
-
-  sens_sub <-subset(RS_sub, group == 'S')
-
-  int_sub <-subset(RS_sub, group == 'I')
-
-  if(nrow(res_sub)==0 | nrow(sens_sub)==0){return(NULL)}
-
-  if(nrow(res_sub) < nrow(sens_sub)){
-    #add "I" to balance cases
-
-    row_diff <- nrow(sens_sub)- nrow(res_sub)
-    res_sub <- rbind(res_sub, int_sub[1:row_diff,])
-    res_sub <- res_sub[!is.na(res_sub$X),]
-    res_sub$group <- "R"
-  }
-
-  if(nrow(res_sub) > nrow(sens_sub)){
-    #add "I" to balance cases
-
-    row_diff <- nrow(res_sub)- nrow(sens_sub)
-    sens_sub <- rbind(sens_sub, int_sub[1:row_diff,])
-    sens_sub <- sens_sub[!is.na(sens_sub$X),]
-    sens_sub$group <- "S"
-  }
-
-  meta_sub <- subset(metadata, drug == drug_idx)
-
-  #TODO apply this code to the previous definition of conc_idxs
-  meta_sub$conc <- meta_sub %>% dplyr::group_by(conc) %>%  group_indices(conc)
-  #unique(meta_sub$tmp)
-  #xtabs(~conc+tmp, meta_sub)
-
-
-  resistant_metadata_idx <- subset(meta_sub, cell %in% unique(res_sub$cell) & conc %in%  unique(res_sub$Final_conc_uM))
-
-  sensitive_metadata_idx <- subset(meta_sub, cell %in% unique(sens_sub$cell) & conc %in%  unique(sens_sub$Final_conc_uM))
-
-  max_length <- min(nrow(resistant_metadata_idx),nrow(sensitive_metadata_idx))
-
-  if(max_length>6){
-    sensitive_metadata_idx <- sensitive_metadata_idx[1:max_length,]
-
-    resistant_metadata_idx <- resistant_metadata_idx[1:max_length,]
-
-    class.v <- rep(0,nrow(sensitive_metadata_idx))
-
-    dataset <- data[,sensitive_metadata_idx$idx]
-
-    dataset <- cbind(dataset, data[,resistant_metadata_idx$idx])
-
-    dataset <- data.frame(dataset)
-
-    ions_sub <- ions[,c('ionIndex','idKEGG')]
-
-    ions_sub <- tidyr::separate_rows(ions_sub,idKEGG, convert = TRUE, sep = ' ')
-
-    ions_sub <- subset(ions_sub,!grepl("^\\s*$", idKEGG))
-
-    ions_sub <- ions_sub %>% dplyr::group_by(idKEGG) %>% dplyr::slice(1)
-
-    dataset <- dataset[ions_sub$ionIndex,]
-
-    rownames(dataset) <- ions_sub$idKEGG
-    class.v <- append(class.v,rep(1,nrow(resistant_metadata_idx)))
-
-    CLS <- list(class.v = class.v, phen = c("S", 'R'))
-
-
-    setwd("C:\\Users\\masierom\\polybox\\Programing\\GSEA\\GSEA_2005_updatedMauro_20180914")
-
-    Output_GSEA <- GSEA(
-      dataset = dataset,                       # Input gene expression Affy dataset file in RES or GCT format
-      CLS = CLS,                               # Input class vector (phenotype) file in CLS format
-      temp =  temp,                            # Gene set database in GMT format
-      output.directory      = getwd(),         # Directory where to store output and results (default: "")
-      #  Program parameters :----------------------------------------------------------------------------------------------------------------------------
-      doc.string            = drug_idx,      # Documentation string used as a prefix to name result files (default: "GSEA.analysis")
-      non.interactive.run   = T,               # Run in interactive (i.e. R GUI) or batch (R command line) mode (default: F)
-      reshuffling.type      = "sample.labels", # Type of permutation reshuffling: "sample.labels" or "gene.labels" (default: "sample.labels"
-      nperm                 = 500,            # Number of random permutations (default: 1000)
-      weighted.score.type   =  1,              # Enrichment correlation-based weighting: 0=no weight (KS), 1= weigthed, 2 = over-weigthed (default: 1)
-      nom.p.val.threshold   = -1,              # Significance threshold for nominal p-vals for gene sets (default: -1, no thres)
-      fwer.p.val.threshold  = -1,              # Significance threshold for FWER p-vals for gene sets (default: -1, no thres)
-      fdr.q.val.threshold   = 0.25,            # Significance threshold for FDR q-vals for gene sets (default: 0.25)
-      topgs                 = 20,              # Besides those passing test, number of top scoring gene sets used for detailed reports (default: 10)
-      adjust.FDR.q.val      = F,               # Adjust the FDR q-vals (default: F)
-      gs.size.threshold.min = 10,               # Minimum size (in genes) for database gene sets to be considered (default: 25)
-      gs.size.threshold.max = 500,             # Maximum size (in genes) for database gene sets to be considered (default: 500)
-      reverse.sign          = F,               # Reverse direction of gene list (pos. enrichment becomes negative, etc.) (default: F)
-      preproc.type          = 0,               # Preproc.normalization: 0=none, 1=col(z-score)., 2=col(rank) and row(z-score)., 3=col(rank). (def: 0)
-      random.seed           = 760435,          # Random number generator seed. (default: 123456)
-      perm.type             = 0,               # For experts only. Permutation type: 0 = unbalanced, 1 = balanced (default: 0)
-      fraction              = 1.0,             # For experts only. Subsampling fraction. Set to 1.0 (no resampling) (default: 1.0)
-      replace               = F,               # For experts only, Resampling mode (replacement or not replacement) (default: F)
-      save.intermediate.results = F,           # For experts only, save intermediate results (e.g. matrix of random perm. scores) (default: F)
-      OLD.GSEA              = F,               # Use original (old) version of GSEA (default: F)
-      use.fast.enrichment.routine = T          # Use faster routine to compute enrichment for random permutations (default: T)
-    )
-    return(Output_GSEA)
-  }
-
-
-}) -> Output_GSEA
-
-
-#plotting enrichment results
-
-#setwd("C:\\Users\\masierom\\polybox\\Programing\\GSEA")
-#files <- list.files(pattern = "SUMMARY.RESULTS.REPORT")
-
-#results <- lapply(files, read.delim)
-
-results <- Output_GSEA
-
-names(results) <- unique(RS_groups$Drug)
-
-lapply(seq_along(results), function(idx,x,y){
-
-  x = unlist(x, recursive = F)
-  named_result <- data.frame(do.call(rbind,x[idx]))
-  if(nrow(named_result)>0){
-    named_result$drug <- y[idx]
-    return(named_result)
-  }
-},x = results, y = names(results)) -> results
-
-
-results <- do.call(rbind, results)
-
-results <- subset(results, glob.p.val < 0.05)
-
-path_names <- lapply(results$GS,function(idx){
-  KEGGREST::keggGet(idx)[[1]][[2]]})
-results$path_names <- unlist(path_names)
-
-results$path_names <- gsub(" - Homo sapiens (human)","",results$path_names,fixed = T)
-
-
-
-#plotting results PEA
-
-ggplot(results, aes(x= drug, y=path_names))+
-  geom_tile()+
-  theme_bw()+
-  theme(axis.text.x = element_text(angle = 45,vjust=1,hjust=1))
-
-
-
-# Compare metabolomics results for R/Sgroups, and see which one is better
-
-# plot the metabolites that are increased in R or S as a volcano plot
-
-
-
-# check which metabolites are driving the correlation, hopefully positive controls
-# Correlate FC with GR50 and GR24
-# For metabolic drugs: check if direct substrate/products involved in MoA are relating to any drug metric
-# Multiomics: Link protein/gene/mRNA levels to metabolomics/drug sensitivity
-# Multiomics: distance_to_target analysis
+ggsave(filename = 'figures//rankedDMA.pdf',plt,width =3,height = 2.6)
