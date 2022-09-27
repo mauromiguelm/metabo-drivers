@@ -5,3 +5,4 @@ venv/
 .Rproj.user
 data/confluence
 data/metabolomics
+data/exclusions
