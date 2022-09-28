@@ -213,7 +213,7 @@ data_corrected <-
 #save summary of plate outliers to excel
 
 write.csv(do.call(rbind,lapply(data_corrected,"[[",2)),
-          paste("data//confluence//growth_data_exclusions_growth","corr-init-seed=",correct_for_initial_seeding,'remove-first-time',skip_first_time,".csv",sep = "_"))
+          paste("data//exclusions//growth_data_exclusions_growth","corr-init-seed=",correct_for_initial_seeding,'remove-first-time',skip_first_time,".csv",sep = "_"))
 
 data_corrected <- lapply(data_corrected,"[[",1)
 
